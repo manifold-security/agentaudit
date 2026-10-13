@@ -1,0 +1,25 @@
+[
+  {
+    "id": "claude.plugin.lsp-server",
+    "name": "Plugin LSP server runs a local command",
+    "description": "A plugin's LSP server configuration, from .lsp.json at the plugin root or the manifest's lspServers key, names a command Claude Code starts as a language server process; the docs state that for a plugin in a project skills directory LSP servers start only after the workspace is trusted.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "lspServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "command", "op": "exists"}
+      ]
+    },
+    "message": "Plugin starts a language server process (command shown)",
+    "references": ["https://code.claude.com/docs/en/plugins-reference"],
+    "examples": [
+      {"name": "go", "command": "gopls"},
+      {"name": "tk", "command": "sh", "args": ["-c", "./start.sh"]}
+    ],
+    "negative_examples": [
+      {"name": "go", "command": ""}
+    ]
+  }
+]

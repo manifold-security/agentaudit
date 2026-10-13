@@ -1,0 +1,9 @@
+{
+  "name": "vendor-plugin",
+  "version": "0.1.0",
+  "mcpServers": {
+    "db": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/db"
+    }
+  }
+}

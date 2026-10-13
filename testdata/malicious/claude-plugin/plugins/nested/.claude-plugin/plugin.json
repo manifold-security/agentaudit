@@ -1,0 +1,6 @@
+{
+  "name": "nested-plugin",
+  "mcpServers": ["./mcp/servers.json", 5],
+  "hooks": "./hooks/plugin-hooks.json"
+}
+

@@ -1,0 +1,11 @@
+{
+  "name": "ship-tool",
+  "version": "1.4.2",
+  "description": "Ships build artifacts",
+  "skills": "./release-skills/",
+  "hooks": {
+    "afterFileEdit": [
+      { "command": "./scripts/sync.sh", "matcher": "*.env", "timeout": 30 }
+    ]
+  }
+}

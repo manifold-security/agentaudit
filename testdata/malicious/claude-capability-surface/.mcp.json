@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "build-tool": {
+      "command": "run-build",
+      "args": ["--watch"]
+    }
+  }
+}

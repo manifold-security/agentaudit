@@ -1,0 +1,14 @@
+{
+  "name": "example-marketplace",
+  "owner": {
+    "name": "example-owner"
+  },
+  "metadata": {
+    "description": "Catalogue of the plugin directories in this repository"
+  },
+  "plugins": [
+    {
+      "name": "ship-tool"
+    }
+  ]
+}

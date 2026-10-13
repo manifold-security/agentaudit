@@ -1,0 +1,143 @@
+[
+  {
+    "id": "cursor.sandbox.disabled",
+    "name": "Sandbox is turned off for the workspace",
+    "description": "The insecure_none sandbox type disables Cursor's sandbox entirely, so agent-run commands reach the whole machine instead of the workspace, whichever configuration source declared it.",
+    "category": ["sandbox"],
+    "appliesTo": ["cursor"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mode", "op": "equals", "value": "insecure_none"}
+      ]
+    },
+    "message": "The sandbox is disabled, so agent-run commands are unconfined",
+    "references": ["https://cursor.com/docs/reference/sandbox.md"],
+    "examples": [
+      {"mode": "insecure_none"}
+    ],
+    "negative_examples": [
+      {"mode": ""},
+      {"mode": "workspace_readwrite"},
+      {"mode": "workspace_readonly"}
+    ]
+  },
+  {
+    "id": "cursor.sandbox.writable-path",
+    "name": "Sandbox write access is granted by an absolute or home path",
+    "description": "additionalReadwritePaths lists extra paths the agent may read and write, on top of the workspace the workspace_readwrite type grants by default. An entry spelled absolutely or under the home directory asks for reach the default grant does not carry, and it is committed configuration rather than a prompt the user answers. A workspace-relative entry names what the default type already covers, so it is left out.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["cursor"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "access", "op": "equals", "value": "readwrite"},
+        {"field": "path", "op": "exists"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|[A-Za-z]:)"}
+      ]
+    },
+    "message": "additionalReadwritePaths grants write access by an absolute or home path rather than a workspace-relative one",
+    "references": ["https://cursor.com/docs/reference/sandbox.md"],
+    "examples": [
+      {"path": "~/.aws", "access": "readwrite"},
+      {"path": "/opt/tools", "access": "readwrite"},
+      {"path": "$HOME/.config", "access": "readwrite"},
+      {"path": "C:\\Windows\\System32", "access": "readwrite"},
+      {"path": "/", "access": "readwrite"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "readwrite"},
+      {"path": ".", "access": "readwrite"},
+      {"path": "./build", "access": "readwrite"},
+      {"path": "node_modules", "access": "readwrite"},
+      {"path": "**/*.ts", "access": "readwrite"},
+      {"path": "~/.ssh", "access": "readonly"},
+      {"mode": "insecure_none"}
+    ]
+  },
+  {
+    "id": "cursor.sandbox.readable-path",
+    "name": "Sandbox read access is granted by an absolute or home path",
+    "description": "additionalReadonlyPaths lists extra paths the agent may read, on top of the workspace the default sandbox type already covers. Reading is enough to stage an exfiltration: a credential file the agent can read is a credential it can put in a command it runs. The path decides nothing about which secrets sit behind it, so this rule takes the same absolute-or-home spelling its writable-path sibling takes, and a reader judges the destination. A workspace-relative entry adds no reach to report.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["cursor"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "access", "op": "equals", "value": "readonly"},
+        {"field": "path", "op": "exists"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|[A-Za-z]:)"}
+      ]
+    },
+    "message": "additionalReadonlyPaths grants read access by an absolute or home path rather than a workspace-relative one",
+    "references": ["https://cursor.com/docs/reference/sandbox.md"],
+    "examples": [
+      {"path": "~/.config/gcloud", "access": "readonly"},
+      {"path": "~/.ssh", "access": "readonly"},
+      {"path": "$HOME/.netrc", "access": "readonly"},
+      {"path": "/home/ci/.gnupg", "access": "readonly"},
+      {"path": "C:\\Users\\you\\.aws\\credentials", "access": "readonly"},
+      {"path": "/", "access": "readonly"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "readonly"},
+      {"path": ".", "access": "readonly"},
+      {"path": "./docs", "access": "readonly"},
+      {"path": "vendor", "access": "readonly"},
+      {"path": "/opt/tools", "access": "readwrite"},
+      {"mode": "insecure_none"}
+    ]
+  },
+  {
+    "id": "cursor.network.egress-allowed-by-default",
+    "name": "Sandbox egress allows whatever no pattern matches",
+    "description": "The fallback decides what happens to traffic no allow or deny pattern matched. The allow value flips it from a denial to an acceptance, so every host nobody thought to deny becomes reachable, whichever configuration source set it.",
+    "category": ["network-access"],
+    "appliesTo": ["cursor"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "allow"}
+      ]
+    },
+    "message": "Sandbox egress allows any host no pattern matched",
+    "references": ["https://cursor.com/docs/reference/sandbox.md"],
+    "examples": [
+      {"default": "allow"}
+    ],
+    "negative_examples": [
+      {"default": "deny"},
+      {"default": ""},
+      {"pattern": "*.example.com"}
+    ]
+  },
+  {
+    "id": "cursor.network.egress-allowed-pattern",
+    "name": "Sandbox egress is opened to a pattern",
+    "description": "A networkPolicy.allow entry is a host the sandboxed agent may reach: an exact host, a wildcard covering every subdomain of a domain, or a CIDR block. Matching ignores the URL path, so the whole host is reachable however narrow the entry reads.",
+    "category": ["network-access"],
+    "appliesTo": ["cursor"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "pattern", "op": "exists"}
+      ]
+    },
+    "message": "Sandbox egress is opened to this host pattern",
+    "references": ["https://cursor.com/docs/reference/sandbox.md"],
+    "examples": [
+      {"pattern": "registry.example.com"},
+      {"pattern": "*.example.net"},
+      {"pattern": "203.0.113.0/24"}
+    ],
+    "negative_examples": [
+      {"pattern": ""},
+      {"default": "allow"}
+    ]
+  }
+]

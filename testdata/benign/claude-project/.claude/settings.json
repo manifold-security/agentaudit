@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {"type": "command", "command": "notify-start.sh"}
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "statusline.sh"
+  },
+  "apiKeyHelper": "get-api-key.sh"
+}

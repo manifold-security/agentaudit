@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: agentaudit
+
+builds:
+  - id: agentaudit
+    main: ./cmd/agentaudit
+    binary: agentaudit
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  header: |
+    ## Install
+
+    Download the archive for your platform below, then check it:
+
+    ```bash
+    shasum -a 256 --ignore-missing -c SHA256SUMS
+    ```
+
+    Or, with Go installed:
+
+    ```bash
+    go install github.com/manifold-security/agentaudit/cmd/agentaudit@{{ .Tag }}
+    ```

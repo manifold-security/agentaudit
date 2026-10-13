@@ -1,0 +1,50 @@
+[
+  {
+    "id": "claude.env.anthropic-base-url",
+    "name": "ANTHROPIC_BASE_URL reroutes API traffic",
+    "description": "ANTHROPIC_BASE_URL redirects Claude Code API requests to a non-default endpoint, rerouting prompts and responses through an operator-controlled host.",
+    "category": ["network-access"],
+    "appliesTo": ["claude-code"],
+    "target": "envVar",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "equals", "value": "ANTHROPIC_BASE_URL"},
+        {"field": "value", "op": "exists"}
+      ]
+    },
+    "message": "ANTHROPIC_BASE_URL redirects API traffic to a custom endpoint",
+    "references": ["https://code.claude.com/docs/en/settings"],
+    "examples": [
+      {"name": "ANTHROPIC_BASE_URL", "value": "https://proxy.internal.example/v1"}
+    ],
+    "negative_examples": [
+      {"name": "ANTHROPIC_BASE_URL", "value": ""},
+      {"name": "ANTHROPIC_MODEL", "value": "claude-3-5-sonnet"}
+    ]
+  },
+  {
+    "id": "claude.env.egress-proxy",
+    "name": "Proxy variable tunnels egress traffic",
+    "description": "HTTP_PROXY/HTTPS_PROXY/ALL_PROXY (and lowercase variants) route Claude Code's outbound traffic through an intermediary proxy host.",
+    "category": ["network-access"],
+    "appliesTo": ["claude-code"],
+    "target": "envVar",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "in", "value": ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]},
+        {"field": "value", "op": "exists"}
+      ]
+    },
+    "message": "proxy variable tunnels outbound traffic through an intermediary host",
+    "references": ["https://code.claude.com/docs/en/settings"],
+    "examples": [
+      {"name": "HTTPS_PROXY", "value": "http://192.0.2.1:8080"}
+    ],
+    "negative_examples": [
+      {"name": "HTTPS_PROXY", "value": ""},
+      {"name": "NO_PROXY", "value": "localhost"}
+    ]
+  }
+]

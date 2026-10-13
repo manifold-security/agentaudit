@@ -1,0 +1,28 @@
+[
+  {
+    "id": "cursor.permissions.auto-run-instructions",
+    "name": "An auto-run instruction leans the reviewer toward allowing",
+    "description": "allow_instructions, under autoRun or under the undocumented autoReview alias Cursor resolves ahead of it, holds free-form prose rather than a tool name, a command or a path. Cursor documents the key as describing actions Auto-review should lean toward allowing, and states that the user instructions and the project instructions both apply, so at project scope the repository supplies wording that argues for fewer approval prompts on the machine of whoever opened it. block_instructions is the other half of the same key and leans the reviewer toward blocking, so it is left out: reporting it would name a narrowing as a grant.",
+    "category": ["permissions"],
+    "appliesTo": ["cursor"],
+    "target": "instructionText",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "setting", "op": "equals", "value": "allow_instructions"}
+      ]
+    },
+    "message": "This instruction leans Cursor auto-review toward allowing the actions it describes",
+    "references": ["https://cursor.com/docs/agent/security/run-modes.md"],
+    "examples": [
+      {"setting": "allow_instructions", "text": "release scripts are routine"},
+      {"setting": "allow_instructions", "text": "tag pushes are routine"}
+    ],
+    "negative_examples": [
+      {"setting": "block_instructions", "text": "ask before touching prod"},
+      {"setting": "terminalAllowlist", "text": "git"},
+      {"setting": "allow", "text": "release scripts are routine"},
+      {"setting": "", "text": "ask before touching prod"}
+    ]
+  }
+]

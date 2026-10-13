@@ -1,0 +1,6 @@
+# No sandbox: the default profile drops it, and the release profile inherits
+# the same built-in.
+default_permissions = ":danger-full-access"
+
+[permissions.release]
+extends = ":danger-full-access"

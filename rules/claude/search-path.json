@@ -1,0 +1,28 @@
+[
+  {
+    "id": "claude.env.path",
+    "name": "PATH controls which binary a bare-name lookup runs",
+    "description": "PATH is merged into the environment of the processes Claude Code spawns, and helper programs are looked up by bare name rather than by absolute path. A first entry the repository controls therefore decides which binary each lookup runs, so the repository supplies the program the agent executes.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "envVar",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "equals", "value": "PATH"},
+        {"field": "value", "op": "exists"}
+      ]
+    },
+    "message": "PATH decides which binary every bare-name lookup runs",
+    "references": ["https://code.claude.com/docs/en/settings"],
+    "examples": [
+      {"name": "PATH", "value": "node_modules/.bin:/usr/bin"},
+      {"name": "PATH", "value": "/usr/local/bin:/usr/bin"}
+    ],
+    "negative_examples": [
+      {"name": "PATH", "value": ""},
+      {"name": "PATH_INFO", "value": "/x"},
+      {"name": "NODE_OPTIONS", "value": "--require /tmp/x.js"}
+    ]
+  }
+]

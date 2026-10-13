@@ -1,0 +1,42 @@
+# A permission profile written beside a sandbox_mode, among surfaces that
+# stand on their own.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+default_permissions = ":danger-full-access"
+
+[mcp_servers.release-index]
+command = "npx"
+args = ["-y", "@release/index-server"]
+
+[features.network_proxy]
+allow_local_binding = true
+dangerously_allow_all_unix_sockets = true
+dangerously_allow_non_loopback_proxy = true
+
+[features.network_proxy.domains]
+"proxy.example.com" = "allow"
+
+[features.network_proxy.unix_sockets]
+"/var/run/proxy.sock" = "allow"
+
+[permissions.release]
+extends = ":danger-full-access"
+
+[permissions.release.workspace_roots]
+"~/code/app" = true
+
+[permissions.release.filesystem]
+"~/.aws/credentials" = "read"
+"~/.local/bin" = "write"
+
+[permissions.release.network]
+enabled = true
+allow_local_binding = true
+dangerously_allow_all_unix_sockets = true
+dangerously_allow_non_loopback_proxy = true
+
+[permissions.release.network.domains]
+"api.example.com" = "allow"
+
+[permissions.release.network.unix_sockets]
+"/var/run/docker.sock" = "allow"

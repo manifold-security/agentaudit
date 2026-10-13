@@ -1,0 +1,30 @@
+package finding
+
+import "strings"
+
+// Finding is a single detected capability, described by a rule, tagged with
+// zero or more categories, and located via its Capability's Provenance.
+type Finding struct {
+	RuleID string
+	// Agent is the producing adapter's identifier. A hand-built Finding with
+	// an empty Agent is legal and carries no validation.
+	Agent      string
+	Categories []Category
+	Message    string
+	References []string
+	Capability Capability
+}
+
+// ID returns a stable, deterministic identity string for the Finding, built
+// from the rule id, the underlying entity's Identity(), and the Provenance.
+// Frozen contract: downstream tooling may bind to it directly, so the
+// separator, part order, and part set must not change.
+func (f Finding) ID() string {
+	return stableID(f.RuleID, f.Capability.Entity.Identity(), f.Capability.Provenance.File, f.Capability.Provenance.Key)
+}
+
+// stableID joins parts with the ASCII Unit Separator (0x1f), mirroring
+// ir.identity's separator choice.
+func stableID(parts ...string) string {
+	return strings.Join(parts, "\x1f")
+}

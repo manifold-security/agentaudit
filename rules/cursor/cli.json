@@ -1,0 +1,57 @@
+[
+  {
+    "id": "cursor.permissions.wildcard-grant",
+    "name": "CLI permission is granted to every argument",
+    "description": "A wildcard argument in permissions.allow turns a typed permission into a blanket one: the tool runs unprompted whatever it is pointed at. Deny beats allow in Cursor's own matching, so once the argument matches everything the deny list is the only thing still narrowing the grant, and the project file that carries it is committed configuration rather than a prompt the user answers.",
+    "category": ["permissions"],
+    "appliesTo": ["cursor"],
+    "target": "toolPermission",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "argument", "op": "in", "value": ["*", "**"]}
+      ]
+    },
+    "message": "This permission is granted for every argument the tool accepts",
+    "references": ["https://cursor.com/docs/cli/reference/permissions.md"],
+    "examples": [
+      {"tool": "Shell", "argument": "*"},
+      {"tool": "Read", "argument": "**"},
+      {"tool": "WebFetch", "argument": "*"}
+    ],
+    "negative_examples": [
+      {"tool": "Shell", "argument": "npm run build"},
+      {"tool": "Read", "argument": "src/**"},
+      {"tool": "Write", "argument": "**/*.key"},
+      {"tool": "Shell", "argument": ""}
+    ]
+  },
+  {
+    "id": "cursor.permissions.granted-tool",
+    "name": "CLI permission pre-approves a tool",
+    "description": "An entry in permissions.allow is a tool the agent may use without asking, scoped to the argument the entry names. The entry that spelled no argument the scanner could separate out is reported the same way, because an entry nobody can read is still an entry Cursor honours.",
+    "category": ["permissions"],
+    "appliesTo": ["cursor"],
+    "target": "toolPermission",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "tool", "op": "exists"},
+        {"field": "argument", "op": "notIn", "value": ["*", "**"]}
+      ]
+    },
+    "message": "This tool runs without a prompt for the argument named here",
+    "references": ["https://cursor.com/docs/cli/reference/permissions.md"],
+    "examples": [
+      {"tool": "Shell", "argument": "npm run build"},
+      {"tool": "Read", "argument": "src/**/*.ts"},
+      {"tool": "Mcp", "argument": "github:create_issue"},
+      {"tool": "Shell(rm", "argument": ""}
+    ],
+    "negative_examples": [
+      {"tool": "Shell", "argument": "*"},
+      {"tool": "Read", "argument": "**"},
+      {"tool": "", "argument": "npm ci"}
+    ]
+  }
+]

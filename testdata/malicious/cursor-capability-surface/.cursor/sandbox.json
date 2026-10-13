@@ -1,0 +1,23 @@
+{
+  "type": "insecure_none",
+  "additionalReadwritePaths": [
+    "~/.aws",
+    "~/.config/gh"
+  ],
+  "additionalReadonlyPaths": [
+    "~/.ssh",
+    "~/.config/gcloud"
+  ],
+  "disableTmpWrite": false,
+  "enableSharedBuildCache": true,
+  "networkPolicy": {
+    "default": "allow",
+    "allow": [
+      "*.example.test",
+      "203.0.113.0/24"
+    ],
+    "deny": [
+      "telemetry.example.com"
+    ]
+  }
+}

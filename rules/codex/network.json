@@ -1,0 +1,111 @@
+[
+  {
+    "id": "codex.network.sandbox-network-access",
+    "name": "The sandbox is opened to outbound network traffic",
+    "description": "network_access in the sandbox_workspace_write table decides whether a command the agent runs may reach the network at all. Granting it pairs a writable workspace with egress, which is what turns a file the agent read into a file an attacker receives.",
+    "category": ["network-access"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "true"}
+      ]
+    },
+    "message": "The sandbox is opened to outbound network traffic",
+    "references": ["https://learn.chatgpt.com/docs/config-file/config-reference.md"],
+    "examples": [
+      {"default": "true"}
+    ],
+    "negative_examples": [
+      {"default": ""},
+      {"default": "allow"},
+      {"default": "allow_all"},
+      {"pattern": "*.example.com"}
+    ]
+  },
+  {
+    "id": "codex.network.local-binding",
+    "name": "The local and private-network guard is disabled",
+    "description": "allow_local_binding disables the guard that keeps agent-run traffic off loopback and private-range addresses. A cloud instance-metadata endpoint and an internal service both answer at addresses the guard otherwise refuses, and neither sits on the public internet a host pattern is written for.",
+    "category": ["network-access"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "allow_local_binding"}
+      ]
+    },
+    "message": "With sandboxed networking enabled, allow_local_binding drops the guard that keeps agent traffic off loopback and private-range addresses",
+    "references": [
+      "https://learn.chatgpt.com/docs/permissions.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"default": "allow_local_binding"}
+    ],
+    "negative_examples": [
+      {"default": ""},
+      {"default": "true"},
+      {"default": "allow_upstream_proxy"},
+      {"pattern": "127.0.0.1"}
+    ]
+  },
+  {
+    "id": "codex.network.all-unix-sockets",
+    "name": "Every Unix socket on the machine is admitted",
+    "description": "dangerously_allow_all_unix_sockets bypasses the Unix socket allowlist, which is a broad local escape hatch. A container-runtime control socket or an ssh-agent socket hands the agent host-level control or credential forwarding through a path that reads as a local file.",
+    "category": ["sandbox"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "dangerously_allow_all_unix_sockets"}
+      ]
+    },
+    "message": "With sandboxed networking enabled, dangerously_allow_all_unix_sockets admits every Unix socket on the machine",
+    "references": [
+      "https://learn.chatgpt.com/docs/permissions.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"default": "dangerously_allow_all_unix_sockets"}
+    ],
+    "negative_examples": [
+      {"default": ""},
+      {"default": "true"},
+      {"default": "dangerously_allow_non_loopback_proxy"},
+      {"pattern": "/var/run/docker.sock"}
+    ]
+  },
+  {
+    "id": "codex.network.non-loopback-proxy",
+    "name": "The proxy listener may bind a non-loopback address",
+    "description": "dangerously_allow_non_loopback_proxy allows proxy listeners to bind non-loopback addresses, which puts the agent's egress path on the network the machine sits on. Another host on that network then reaches a listener meant for this one.",
+    "category": ["network-access"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "dangerously_allow_non_loopback_proxy"}
+      ]
+    },
+    "message": "With sandboxed networking enabled, dangerously_allow_non_loopback_proxy lets the proxy listener bind a non-loopback address",
+    "references": [
+      "https://learn.chatgpt.com/docs/permissions.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"default": "dangerously_allow_non_loopback_proxy"}
+    ],
+    "negative_examples": [
+      {"default": ""},
+      {"default": "true"},
+      {"default": "dangerously_allow_all_unix_sockets"},
+      {"pattern": "0.0.0.0"}
+    ]
+  }
+]

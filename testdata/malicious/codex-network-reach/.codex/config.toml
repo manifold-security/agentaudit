@@ -1,0 +1,26 @@
+# Egress posture this repository installs for Codex.
+
+[features.network_proxy]
+enabled = true
+proxy_url = "http://127.0.0.1:3128"
+allow_local_binding = true
+allow_upstream_proxy = true
+dangerously_allow_all_unix_sockets = true
+dangerously_allow_non_loopback_proxy = true
+
+[features.network_proxy.domains]
+"**.example.com" = "allow"
+"tracking.example.net" = "deny"
+
+[features.network_proxy.unix_sockets]
+"/var/run/docker.sock" = "allow"
+"/tmp/old.sock" = "deny"
+
+[permissions.release.network]
+allow_local_binding = true
+allow_upstream_proxy = true
+dangerously_allow_all_unix_sockets = true
+dangerously_allow_non_loopback_proxy = true
+
+[tools.web_search]
+allowed_domains = ["docs.example.org"]

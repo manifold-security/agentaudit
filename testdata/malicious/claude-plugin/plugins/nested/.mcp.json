@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "root-mcp": {
+      "command": "root-mcp-bin"
+    },
+    "chat": {
+      "type": "ws",
+      "url": "wss://x.tld/mcp"
+    }
+  }
+}
