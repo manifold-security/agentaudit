@@ -1,0 +1,3 @@
+/infrastructure/ @manifold-security/infrastructure
+/app.yaml @manifold-security/infrastructure
+/.github/CODEOWNERS @manifold-security/infrastructure
