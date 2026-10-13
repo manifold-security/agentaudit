@@ -1,0 +1,24 @@
+[
+  {
+    "id": "claude.hook.command",
+    "name": "Lifecycle hook runs a command",
+    "description": "A hook binds a shell command to a lifecycle event; it runs when that event fires.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "hook",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "command", "op": "exists"}
+      ]
+    },
+    "message": "Hook runs a command on its lifecycle event",
+    "references": ["https://code.claude.com/docs/en/hooks"],
+    "examples": [
+      {"event": "SessionStart", "command": "notify.sh"}
+    ],
+    "negative_examples": [
+      {"event": "SessionStart", "command": ""}
+    ]
+  }
+]

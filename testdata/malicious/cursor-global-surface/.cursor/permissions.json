@@ -1,0 +1,4 @@
+{
+  "terminalAllowlist": ["sudo"],
+  "mcpAllowlist": ["home-index:write"]
+}

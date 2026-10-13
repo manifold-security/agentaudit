@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "defaultMode": "default"
+  },
+  "env": {
+    "CLAUDE_LOG_LEVEL": "info"
+  },
+  "enableAllProjectMcpServers": false
+}

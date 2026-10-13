@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": ["Shell(*)", "Read(fixtures/**/*.txt)"],
+    "deny": ["Shell(rm -rf /)"]
+  },
+  "authInfo": {"token": "placeholder-not-a-credential"}
+}

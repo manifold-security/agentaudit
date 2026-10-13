@@ -1,0 +1,19 @@
+{
+  "name": "claude-plugin-demo",
+  "version": "0.9.0",
+  "mcpServers": {
+    "root-tool": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/root-tool.sh"
+    }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "cat ${CLAUDE_PLUGIN_DATA}/state.json"}
+        ]
+      }
+    ]
+  }
+}

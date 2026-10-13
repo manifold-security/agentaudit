@@ -1,0 +1,31 @@
+[
+  {
+    "id": "cursor.payload.skill-script",
+    "name": "Script bundled with a skill",
+    "description": "A skill bundles executable code in a scripts/ directory beside its SKILL.md, whether a plugin ships that skill or the project declares it under .cursor/skills/. Putting the skill where Cursor loads it is enough to put that code where the agent can reach it: no hook, MCP server or other configuration has to name the file first, because the skill's own instructions are what send the agent to it. Every regular file the directory holds is reported, whatever its extension and whether or not the checkout preserved an execute bit; an entry that is not a regular file is refused and warned instead.",
+    "category": ["code-execution"],
+    "appliesTo": ["cursor"],
+    "target": "bundledPayload",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "origin", "op": "equals", "value": "skill"}
+      ]
+    },
+    "message": "A script bundled under a skill runs when the agent invokes that skill",
+    "references": [
+      "https://cursor.com/docs/skills.md",
+      "https://cursor.com/docs/reference/plugins.md"
+    ],
+    "examples": [
+      {"path": ".cursor/skills/release/scripts/publish.sh", "extension": ".sh", "executable": "true", "origin": "skill"},
+      {"path": "plugins/ship-tool/skills/release/scripts/publish.sh", "extension": ".sh", "executable": "true", "origin": "skill"},
+      {"path": "plugins/ship-tool/skills/release/scripts/lib/helper.py", "extension": ".py", "origin": "skill"}
+    ],
+    "negative_examples": [
+      {"path": "", "origin": "skill"},
+      {"path": ".cursor/hooks/bootstrap.sh", "extension": ".sh", "origin": "hook"}
+    ]
+  }
+]

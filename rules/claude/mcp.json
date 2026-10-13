@@ -1,0 +1,51 @@
+[
+  {
+    "id": "claude.mcp.server",
+    "name": "MCP server the agent can invoke",
+    "description": "A configured MCP server the agent can invoke as a tool; transport (stdio/http/sse) is shown as a field, not a separate check.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "transport", "op": "exists"},
+        {"field": "headersHelper", "op": "equals", "value": ""}
+      ]
+    },
+    "message": "MCP server the agent can invoke (transport shown)",
+    "references": ["https://code.claude.com/docs/en/mcp"],
+    "examples": [
+      {"transport": "stdio", "command": "/usr/local/bin/mytool"},
+      {"transport": "http", "url": "https://api.example.com"}
+    ],
+    "negative_examples": [
+      {"transport": ""},
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "headersHelper": "./scripts/headers.sh"}
+    ]
+  },
+  {
+    "id": "claude.mcp.headers-helper",
+    "name": "MCP connection runs a header helper command",
+    "description": "headersHelper names a command Claude Code runs to generate request headers for an MCP server; the Claude Code docs state it is executed as an arbitrary shell command and, for a project .mcp.json server, runs after the workspace trust dialog at session start and on each reconnect; documented for http, sse and ws servers.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "headersHelper", "op": "exists"}
+      ]
+    },
+    "message": "Connecting to this MCP server runs a local command",
+    "references": ["https://code.claude.com/docs/en/mcp"],
+    "examples": [
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "headersHelper": "./scripts/headers.sh"},
+      {"transport": "stdio", "command": "npx", "headersHelper": "./scripts/headers.sh"}
+    ],
+    "negative_examples": [
+      {"transport": "http", "url": "https://mcp.example.test/mcp"},
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "headersHelper": ""}
+    ]
+  }
+]

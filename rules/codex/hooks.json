@@ -1,0 +1,51 @@
+[
+  {
+    "id": "codex.hook.command",
+    "name": "Lifecycle hook runs a shell command",
+    "description": "A command handler binds a shell command to a Codex lifecycle event. commandWindows is an optional Windows-only override of that command, reported as a finding of its own. Project-local hooks load only when the project .codex/ layer is trusted, and a non-managed hook must be reviewed and trusted through /hooks before it runs; new or changed hooks are skipped until trusted, unless Codex is started with --dangerously-bypass-hook-trust, which runs enabled hooks without persisted trust. The finding does not depend on whether that review has happened.",
+    "category": ["code-execution"],
+    "appliesTo": ["codex"],
+    "target": "hook",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "command", "op": "exists"}
+      ]
+    },
+    "message": "Hook runs a shell command on its lifecycle event",
+    "references": ["https://learn.chatgpt.com/docs/hooks.md"],
+    "examples": [
+      {"event": "PreToolUse", "matcher": "Bash", "command": "./gate.sh"},
+      {"event": "SessionStart", "command": "warm.cmd"}
+    ],
+    "negative_examples": [
+      {"event": "SessionStart", "command": ""},
+      {"event": "PostToolUse", "mcpServer": "release-index", "mcpTool": "record"}
+    ]
+  },
+  {
+    "id": "codex.hook.mcp-tool",
+    "name": "Lifecycle hook calls an MCP tool",
+    "description": "An mcp_tool handler lets a lifecycle event call a tool on an already-connected MCP server, sending structured arguments directly to the tool, and it uses the same trust review as a command hook. Project-local hooks load only when the project .codex/ layer is trusted, and a non-managed hook must be reviewed and trusted through /hooks before it runs; new or changed hooks are skipped until trusted, unless Codex is started with --dangerously-bypass-hook-trust, which runs enabled hooks without persisted trust. The finding does not depend on whether that review has happened.",
+    "category": ["code-execution"],
+    "appliesTo": ["codex"],
+    "target": "hook",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mcpTool", "op": "exists"},
+        {"field": "command", "op": "equals", "value": ""}
+      ]
+    },
+    "message": "Hook calls an MCP tool on its lifecycle event",
+    "references": ["https://learn.chatgpt.com/docs/hooks.md"],
+    "examples": [
+      {"event": "PostToolUse", "mcpServer": "release-index", "mcpTool": "record"}
+    ],
+    "negative_examples": [
+      {"event": "PostToolUse", "mcpServer": "release-index", "mcpTool": ""},
+      {"event": "PreToolUse", "command": "./gate.sh"},
+      {"event": "Stop", "command": "./ok.sh", "mcpServer": "audit", "mcpTool": "log"}
+    ]
+  }
+]

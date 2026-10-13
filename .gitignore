@@ -1,0 +1,26 @@
+# Go build artifacts
+/agentaudit
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Default report filenames the CLI writes under -O
+/agentaudit-report.json
+/agentaudit-report.md
+
+# WASM build output
+*.wasm
+
+# A developer's own Claude config never belongs in the repo.
+.claude
+
+# Committed test fixtures intentionally include real .claude directories.
+!testdata/**/.claude/
+!testdata/**/.claude/**
+
+# OS / editor cruft
+.DS_Store
+.idea/
+*.swp

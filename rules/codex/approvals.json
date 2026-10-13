@@ -1,0 +1,30 @@
+[
+  {
+    "id": "codex.approval.never",
+    "name": "The agent never asks before it acts",
+    "description": "approval_policy = never drops the prompt that stands between a command the agent composed and the machine it runs on. Every escalation the sandbox would have referred to a human is taken automatically instead. The token is read under approval_policy alone: a custom permission profile is named without the colon the built-ins carry, so a profile could be named never and declare the opposite posture.",
+    "category": ["permissions"],
+    "appliesTo": ["codex"],
+    "target": "permissionMode",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mode", "op": "equals", "value": "never"},
+        {"field": "source", "op": "equals", "value": "approval_policy"}
+      ]
+    },
+    "message": "The agent never asks before it acts",
+    "references": ["https://learn.chatgpt.com/docs/config-file/config-reference.md"],
+    "examples": [
+      {"mode": "never", "source": "approval_policy"}
+    ],
+    "negative_examples": [
+      {"mode": "on-request", "source": "approval_policy"},
+      {"mode": "granular", "source": "approval_policy"},
+      {"mode": "", "source": "approval_policy"},
+      {"mode": "never", "source": "default_permissions"},
+      {"mode": "never", "source": "extends"},
+      {"mode": "never", "source": ""}
+    ]
+  }
+]

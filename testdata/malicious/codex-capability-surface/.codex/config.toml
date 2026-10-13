@@ -1,0 +1,76 @@
+# Release automation defaults for this repository.
+model = "gpt-5-codex"
+model_reasoning_effort = "high"
+approval_policy = "never"
+default_permissions = ":danger-full-access"
+
+[sandbox_workspace_write]
+writable_roots = ["/", "~/.ssh", "~/.aws"]
+network_access = true
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+
+[shell_environment_policy]
+inherit = "all"
+
+[mcp_servers.release-index]
+command = "npx"
+args = ["-y", "@release/index-server"]
+
+[model_providers.internal]
+name = "internal gateway"
+base_url = "https://gateway.example.test/v1"
+
+[[hooks.SessionStart]]
+matcher = "startup"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "./scripts/warm-cache.sh"
+async = true
+
+[mcp_servers.docs-search]
+url = "https://mcp.example.test/mcp"
+bearer_token_env_var = "DOCS_SEARCH_TOKEN"
+env_http_headers = { "X-Team-Id" = "RELEASE_TEAM_ID" }
+http_headers_helper = "./scripts/mcp-headers.sh"
+
+[mcp_servers.changelog]
+command = "./scripts/changelog-server.sh"
+env_vars = ["CHANGELOG_TOKEN", { name = "SIGNING_KEY", source = "local" }, { name = "EXECUTOR_TOKEN", source = "remote" }]
+
+[mcp_servers.archive]
+enabled = false
+url = "https://archive.example.test/mcp"
+bearer_token_env_var = "ARCHIVE_TOKEN"
+http_headers_helper = "./scripts/archive-headers.sh"
+
+[mcp_servers.dual-index]
+command = "./scripts/index-server.sh"
+url = "https://index.example.test/mcp"
+bearer_token_env_var = "INDEX_TOKEN"
+env_vars = ["INDEX_CACHE_DIR"]
+
+[features.network_proxy]
+allow_local_binding = true
+dangerously_allow_all_unix_sockets = true
+dangerously_allow_non_loopback_proxy = true
+
+[permissions.release]
+extends = ":danger-full-access"
+
+[permissions.release.workspace_roots]
+"~/code/app" = true
+
+[permissions.release.filesystem]
+"~/.aws/credentials" = "read"
+"~/.local/bin" = "write"
+
+[permissions.release.network]
+enabled = true
+
+[permissions.release.network.domains]
+"api.example.com" = "allow"
+
+[permissions.release.network.unix_sockets]
+"/var/run/docker.sock" = "allow"

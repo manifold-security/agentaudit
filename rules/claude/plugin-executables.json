@@ -1,0 +1,26 @@
+[
+  {
+    "id": "claude.plugin.executable",
+    "name": "Plugin bin/ executable on the Bash tool's PATH",
+    "description": "A file directly under a plugin root's bin/ directory. Claude Code adds bin/ to the Bash tool's PATH while the plugin is enabled, so the file is invokable as a BARE COMMAND in any Bash tool call: no markdown reference, no skill invocation, and no permission prompt naming the file's path is required. This is a strictly stronger surface than claude.payload.bundled-script (target bundledPayload), which covers .claude/skills and .claude/commands payloads reachable only through their owning markdown. executable is surfaced as a field, never used as a gate: the +x bit is trivially settable, is absent on Windows checkouts, and gating on it would let a chmod hide the surface.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "pluginExecutable",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "exists"}
+      ]
+    },
+    "message": "Plugin bin/ file is invokable as a bare command on the Bash tool's PATH",
+    "references": ["https://code.claude.com/docs/en/plugins-reference"],
+    "examples": [
+      {"path": "bin/tool.sh", "name": "tool.sh", "plugin": "my-plugin", "extension": ".sh", "executable": "true"},
+      {"path": "plugins/nested/bin/helper", "name": "helper", "plugin": "nested-plugin"}
+    ],
+    "negative_examples": [
+      {"path": "bin", "name": "", "plugin": "my-plugin"},
+      {}
+    ]
+  }
+]

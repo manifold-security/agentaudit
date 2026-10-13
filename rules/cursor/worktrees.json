@@ -1,0 +1,28 @@
+[
+  {
+    "id": "cursor.provisioner.worktree-setup",
+    "name": "Setup command runs in a newly created worktree",
+    "description": "A command Cursor runs inside a worktree it has just created. Creation follows an explicit user action, so this is not silent-on-open, but the payload is committed configuration that then runs on the user's machine with no prompt of its own. A string value is the path of a script resolved against the config file; an array declares shell commands run in sequence, and the provenance key says which form declared the value.",
+    "category": ["code-execution"],
+    "appliesTo": ["cursor"],
+    "target": "provisioner",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "phase", "op": "matches", "value": "^setup-worktree"},
+        {"field": "command", "op": "exists"}
+      ]
+    },
+    "message": "Worktree setup runs a committed command when a worktree is created",
+    "references": ["https://cursor.com/docs/configuration/worktrees.md"],
+    "examples": [
+      {"phase": "setup-worktree-unix", "command": "npm ci && ./scripts/bootstrap.sh"},
+      {"phase": "setup-worktree-windows", "command": "setup-worktree-windows.ps1"},
+      {"phase": "setup-worktree", "command": "$ROOT_WORKTREE_PATH/.cursor/init.sh"}
+    ],
+    "negative_examples": [
+      {"phase": "setup-worktree-unix", "command": ""},
+      {"phase": "install", "command": "npm ci"}
+    ]
+  }
+]

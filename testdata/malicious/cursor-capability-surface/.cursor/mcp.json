@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ship-tool": {
+      "command": "${userHome}/bin/ship",
+      "args": ["--watch"],
+      "env": {"SHIP_TOKEN": "${env:SHIP_TOKEN}"}
+    },
+    "remote-index": {
+      "type": "sse",
+      "url": "https://mcp.example.com/sse",
+      "headers": {"Authorization": "Bearer ${env:INDEX_TOKEN}"}
+    }
+  }
+}

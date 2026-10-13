@@ -1,0 +1,31 @@
+[
+  {
+    "id": "codex.payload.skill-script",
+    "name": "Script bundled with a skill",
+    "description": "A skill is a directory with a SKILL.md file plus optional scripts and references, and its scripts/ directory holds executable code. Codex scans .agents/skills in every directory from the working directory up to the repository root. It starts with each skill's name and description and loads the full SKILL.md instructions when it decides to use the skill, whether the prompt names the skill or the task matches its description. approval_policy.granular.skill_approval sets whether skill-script approval prompts are allowed to surface. The SKILL.md and scripts/ names are matched however they are cased, and every regular file under scripts/ is reported under the path its directory listing gives, whatever its extension and whether or not the checkout preserved an execute bit; an entry there that is not a regular file, a link included, is refused and warned instead. Codex follows symlinked skill folders; this scanner warns about such a link instead of following it.",
+    "category": ["code-execution"],
+    "appliesTo": ["codex"],
+    "target": "bundledPayload",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "origin", "op": "equals", "value": "skill"}
+      ]
+    },
+    "message": "A skill bundles executable code in its scripts/ directory",
+    "references": [
+      "https://learn.chatgpt.com/docs/build-skills.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"path": ".agents/skills/release/scripts/publish.sh", "extension": ".sh", "executable": "true", "origin": "skill"},
+      {"path": ".agents/skills/ops/rotate/scripts/lib/key.py", "extension": ".py", "origin": "skill"}
+    ],
+    "negative_examples": [
+      {"path": "", "origin": "skill"},
+      {"path": ".agents/skills/release/scripts/publish.sh", "extension": ".sh", "origin": "hook"},
+      {"path": ".agents/skills/release/scripts/publish.sh", "extension": ".sh"}
+    ]
+  }
+]

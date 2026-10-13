@@ -1,0 +1,1 @@
+{"toolkit-lang":{"command":"${CLAUDE_PLUGIN_ROOT}/lsp/server.sh","args":["--stdio"],"extensionToLanguage":{".tk":"toolkit"}}}

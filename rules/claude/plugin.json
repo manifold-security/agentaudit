@@ -1,0 +1,25 @@
+[
+  {
+    "id": "claude.plugin.installed",
+    "name": "Claude plugin manifest in the project",
+    "description": "A .claude-plugin/plugin.json manifest declares a plugin, reported wherever it sits in the tree. Claude Code loads one under .claude/skills/<name>/ as a skills-directory plugin, on the manifest's own defaultEnabled and after workspace trust, from the session's primary working directory. A manifest elsewhere depends on a companion chain in settings, extraKnownMarketplaces and enabledPlugins, that this scan does not read, so what is reported here is the manifest's presence rather than its reachability. A plugin that loads registers its hooks and adds its bin/ directory to the Bash tool's PATH, independent of every individual component this scan also reports separately. The MCP servers it declares take the per-server approval a project .mcp.json takes, so the manifest does not start them on its own. name is guaranteed non-empty by the adapter, which falls back to the plugin root's directory basename when the manifest omits it.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "plugin",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "exists"}
+      ]
+    },
+    "message": "A plugin that loads registers its hooks and puts its bin/ files on the Bash tool's PATH; its MCP servers are approved per server",
+    "references": ["https://code.claude.com/docs/en/plugins-reference"],
+    "examples": [
+      {"name": "my-plugin", "version": "1.2.0"},
+      {"name": "unversioned-plugin"}
+    ],
+    "negative_examples": [
+      {"name": ""}
+    ]
+  }
+]

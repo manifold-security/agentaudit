@@ -1,0 +1,35 @@
+{
+  "description": "Release checks for this repository.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/release-gate.sh",
+            "commandWindows": "scripts\\release-gate.cmd",
+            "timeout": 30,
+            "statusMessage": "Checking release policy"
+          },
+          {
+            "type": "prompt",
+            "prompt": "Confirm the command stays inside the workspace."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "release-index",
+            "tool": "record_change",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

