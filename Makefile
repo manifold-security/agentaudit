@@ -5,7 +5,8 @@
 	check clean
 
 VERSION ?= dev
-LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+COMMIT ?=
+LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)"
 
 # The scanner is pure Go, so CGO buys nothing and
 # disabling it keeps the binary portable.

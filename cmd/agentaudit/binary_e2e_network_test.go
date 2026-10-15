@@ -119,11 +119,16 @@ func TestBinaryE2E_EnvVarFindings(t *testing.T) {
 	}
 }
 
-// -V and --version report version info and exit 0 on the compiled binary, so
-// the non-zero exit a scan uses to signal findings does not leak into an
-// informational flag.
+// A binary stamped with -X main.version and -X main.commit prints both on -V
+// and --version and exits 0, so the non-zero exit a scan uses to signal
+// findings does not leak into an informational flag.
 func TestBinaryE2E_VersionFlagUnaffected(t *testing.T) {
-	bin := buildAgentauditBinary(t)
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	bin := filepath.Join(t.TempDir(), "agentaudit-stamped")
+	build := exec.Command("go", "build", "-ldflags", "-X main.version=v0.1.0 -X main.commit="+sha, "-o", bin, ".")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build -o %s . failed: %v\n%s", bin, err, out)
+	}
 
 	for _, flag := range []string{"-V", "--version"} {
 		t.Run(flag, func(t *testing.T) {
@@ -132,8 +137,8 @@ func TestBinaryE2E_VersionFlagUnaffected(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s failed: %v\n%s", flag, err, out)
 			}
-			if !strings.Contains(string(out), "agentaudit ") {
-				t.Errorf("%s stdout = %q, want it to contain \"agentaudit \"", flag, out)
+			if want := "agentaudit 0.1.0 (commit: " + sha + ")\n"; string(out) != want {
+				t.Errorf("%s output = %q, want %q", flag, out, want)
 			}
 		})
 	}

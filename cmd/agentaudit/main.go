@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/manifold-security/agentaudit"
@@ -18,10 +19,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-// version is the CLI version string, overridable at build time via
-// -ldflags "-X main.version=<version>".
-var version = "dev"
 
 var scan = func(fsys fs.FS, warn func(error)) (finding.Report, error) {
 	sc := agentaudit.New(agentaudit.WithWarnFunc(warn))
@@ -55,7 +52,7 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 				return err
 			}
 			if showVersion {
-				fmt.Fprintf(stdout, "agentaudit %s\n", version)
+				fmt.Fprintf(stdout, "agentaudit %s\n", versionLine(version, commit, debug.ReadBuildInfo))
 				*code = 0
 				return nil
 			}

@@ -402,6 +402,9 @@ func TestRun_VersionFlagPrintsVersionAndSkipsScan(t *testing.T) {
 		scanCalled = true
 		return finding.Report{}, nil
 	})
+	savedVersion, savedCommit := version, commit
+	version, commit = "v0.1.0", "C"
+	t.Cleanup(func() { version, commit = savedVersion, savedCommit })
 
 	tests := []struct {
 		name string
@@ -418,8 +421,8 @@ func TestRun_VersionFlagPrintsVersionAndSkipsScan(t *testing.T) {
 			if got != 0 {
 				t.Fatalf("run(%v) = %d, want 0", tt.args, got)
 			}
-			if !strings.Contains(stdout.String(), "agentaudit "+version) {
-				t.Fatalf("stdout = %q, want it to contain version %q", stdout.String(), version)
+			if want := "agentaudit 0.1.0 (commit: C)\n"; stdout.String() != want {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 			}
 			if scanCalled {
 				t.Fatalf("run(%v) invoked scan, want the version flag to skip scanning entirely", tt.args)
