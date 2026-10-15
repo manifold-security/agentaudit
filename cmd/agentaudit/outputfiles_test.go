@@ -19,6 +19,11 @@ type failingCloseWriter struct{}
 func (failingCloseWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (failingCloseWriter) Close() error                { return errors.New("injected close failure") }
 
+type cleanCloseWriter struct{}
+
+func (cleanCloseWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (cleanCloseWriter) Close() error                { return nil }
+
 func outputFilesFixtureReport() finding.Report {
 	f := finding.Finding{
 		RuleID:     "test.rule",
@@ -195,6 +200,36 @@ func TestWriteReportFile_CloseErrorTreatedAsWriteError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "closing") {
 		t.Fatalf("writeReportFile() error = %q, want it to name the closing step", err.Error())
+	}
+}
+
+func TestWriteReportFile_CloseErrorSurfacesAlongsideRenderError(t *testing.T) {
+	original := createFile
+	createFile = func(string) (io.WriteCloser, error) { return failingCloseWriter{}, nil }
+	t.Cleanup(func() { createFile = original })
+
+	renderErr := errors.New("injected render failure")
+	err := writeReportFile("ignored", func(io.Writer) error { return renderErr })
+	if !errors.Is(err, renderErr) {
+		t.Fatalf("writeReportFile() error = %v, want it to wrap the render failure", err)
+	}
+	if !strings.Contains(err.Error(), "injected close failure") {
+		t.Fatalf("writeReportFile() error = %q, want it to carry the Close failure too", err.Error())
+	}
+}
+
+func TestWriteReportFile_RenderErrorSurfacesWhenCloseSucceeds(t *testing.T) {
+	original := createFile
+	createFile = func(string) (io.WriteCloser, error) { return cleanCloseWriter{}, nil }
+	t.Cleanup(func() { createFile = original })
+
+	renderErr := errors.New("injected render failure")
+	err := writeReportFile("ignored", func(io.Writer) error { return renderErr })
+	if !errors.Is(err, renderErr) {
+		t.Fatalf("writeReportFile() error = %v, want it to wrap the render failure", err)
+	}
+	if strings.Contains(err.Error(), "closing") {
+		t.Fatalf("writeReportFile() error = %q, want no closing step after a clean Close", err.Error())
 	}
 }
 

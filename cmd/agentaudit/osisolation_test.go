@@ -128,7 +128,7 @@ func reach(graph map[string][]string, pkg string) []string {
 	order := []string{pkg}
 	for i := 0; i < len(order); i++ {
 		for _, imp := range graph[order[i]] {
-			if seen[imp] || !(firstParty(imp) || thirdParty(imp)) {
+			if seen[imp] || (!firstParty(imp) && !thirdParty(imp)) {
 				continue
 			}
 			seen[imp] = true

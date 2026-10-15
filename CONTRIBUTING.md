@@ -31,10 +31,12 @@ Give the rule fixture coverage under `testdata/malicious/`. `TestEveryEmbeddedRu
 ## Tests and gates
 
 ```sh
-make check    # gofmt, vet, tests and race
+make check      # gofmt, vet, tests and race
+make lint       # golangci-lint, gosec included
+make vulncheck  # govulncheck: known vulnerabilities
 ```
 
-Everything must be green before you open a pull request.
+Everything must be green before you open a pull request; CI runs these same checks at the versions the Makefile pins. `make lint` fetches golangci-lint on its first run and `make vulncheck` queries the Go vulnerability database, so both need the network.
 
 Golden files are compared, never refreshed. If a golden fails, the change moved the output: explain why in the pull request rather than regenerating it.
 

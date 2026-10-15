@@ -112,7 +112,7 @@ func collectPayloads(fsys fs.FS, root string, idx *refIndex) ([]payloadCandidate
 
 		ext := strings.ToLower(path.Ext(p))
 		exec := executable(d)
-		if !payloadExtensions[ext] && !(exec && ext != ".md") {
+		if !payloadExtensions[ext] && (!exec || ext == ".md") {
 			// A host that cannot supply the +x bit leaves the shebang as the
 			// last signal; TestPayloadEntitiesFIFOIsClassifiedWithoutOpening
 			// pins the sniff below the regular-file gate.

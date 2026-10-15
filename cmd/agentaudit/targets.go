@@ -79,7 +79,7 @@ func targetBlocks(target string, recursive bool, warn func(error)) ([]block, err
 	if err != nil {
 		return nil, err
 	}
-	defer closeRoot()
+	defer func() { _ = closeRoot() }()
 
 	if !recursive {
 		rep, err := scan(fsys, warn)
