@@ -1,5 +1,3 @@
-//go:build !js
-
 package agentaudit_test
 
 import (
@@ -13,11 +11,6 @@ import (
 	"github.com/manifold-security/agentaudit"
 )
 
-// scanBudget is calibrated for native execution, which is what the build
-// constraint above keeps this file to. The syscall/js shim carries the
-// branching symlink probe's CLI path past the whole budget on a shared CI
-// runner, where measuring it would score the host rather than a regression
-// here.
 const scanBudget = time.Second
 
 // A wall-clock budget catches an order-of-magnitude regression such as

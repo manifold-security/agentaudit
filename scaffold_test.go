@@ -12,7 +12,6 @@ var scaffoldPaths = []string{
 	"go.mod",
 	"agentaudit.go",
 	"cmd/agentaudit/main.go",
-	"wasm/main.go",
 	"finding",
 	"finding/doc.go",
 	"adapter",
