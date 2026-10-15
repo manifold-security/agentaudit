@@ -1,0 +1,26 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  packageRules: [
+    {
+      description: ['3-day cooldown for Go modules and Actions.'],
+      matchManagers: ['gomod', 'github-actions'],
+      minimumReleaseAge: '3 days',
+    },
+    {
+      description: ['Hold the go directive at the consumer floor; the toolchain line still moves.'],
+      matchManagers: ['gomod'],
+      matchDepTypes: ['golang'],
+      enabled: false,
+    },
+    {
+      description: ['Stay on go-git v5.'],
+      matchPackageNames: ['github.com/go-git/go-git/v5'],
+      allowedVersions: '<6',
+    },
+    {
+      description: ['Nothing automerges here; a person merges every PR.'],
+      matchPackageNames: ['*'],
+      automerge: false,
+    },
+  ],
+}
