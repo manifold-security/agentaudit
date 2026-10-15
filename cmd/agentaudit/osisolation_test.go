@@ -14,25 +14,11 @@ const modulePath = "github.com/manifold-security/agentaudit"
 // cliPackage may reach the OS or a third-party CLI framework.
 const cliPackage = modulePath + "/cmd/agentaudit"
 
-// wasmPackage carries a js && wasm build constraint, so a host listing omits
-// it and jsImportGraph is what brings it under the sweep.
-const wasmPackage = modulePath + "/wasm"
-
-// jsHostToken is the forbiddenImports token the browser frontend crosses to
-// its host through, and jsImport is the package that crossing names.
-const (
-	jsHostToken = "syscall"
-	jsImport    = jsHostToken + "/js"
-)
-
 // frontendAllowances names, per frontend, the forbiddenImports tokens that
 // frontend may reach. A frontend carries the module's boundary to a host, so
-// it is allowed what that host costs and nothing beyond: the browser entry
-// point reaches its host through syscall alone. Naming the allowance keeps it
-// a decision rather than a side effect of which packages a platform lists.
+// it is allowed what that host costs and nothing beyond.
 var frontendAllowances = map[string][]string{
-	cliPackage:  forbiddenImports,
-	wasmPackage: {jsHostToken},
+	cliPackage: forbiddenImports,
 }
 
 // permitted reports whether imp is one of tokens or a subpackage of one:
@@ -82,16 +68,6 @@ var enumerationFloor = []string{
 // listFormat's first field is the package: no import path contains a space.
 const listFormat = `{{.ImportPath}} {{join .Imports " "}}`
 
-func importGraph(t *testing.T) map[string][]string {
-	t.Helper()
-	return listGraph(t)
-}
-
-func jsImportGraph(t *testing.T) map[string][]string {
-	t.Helper()
-	return listGraph(t, "GOOS=js", "GOARCH=wasm")
-}
-
 // listGraph maps each package to its direct imports. go list reads non-test
 // GoFiles only, so a test file's own import — the pretty reporter reaches for
 // os to read its goldens — stays out of the graph and out of every claim
@@ -100,11 +76,11 @@ func jsImportGraph(t *testing.T) map[string][]string {
 // including ones this platform never imports, and building this binary does
 // not fetch those. .github/workflows/ci.yml runs go mod download for that
 // reason.
-func listGraph(t *testing.T, env ...string) map[string][]string {
+func listGraph(t *testing.T) map[string][]string {
 	t.Helper()
 
 	cmd := exec.Command("go", "list", "-mod=readonly", "-deps", "-f", listFormat, modulePath+"/...")
-	cmd.Env = append(append(os.Environ(), "GOPROXY=off"), env...)
+	cmd.Env = append(os.Environ(), "GOPROXY=off")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -168,47 +144,7 @@ func reach(graph map[string][]string, pkg string) []string {
 // list names. Enumerating from go list is what makes that hold for a package
 // added later.
 func TestOSIsolation_EngineAndReporterPackages(t *testing.T) {
-	sweep(t, importGraph(t))
-}
-
-// The sweep holds under the listing that enumerates the browser frontend,
-// where syscall/js is a token it would otherwise be blocked on.
-func TestOSIsolation_WASMFrontendIsExemptUnderTheJSListing(t *testing.T) {
-	graph := jsImportGraph(t)
-
-	imports, ok := graph[wasmPackage]
-	if !ok {
-		t.Fatalf("go list under GOOS=js did not enumerate %s", wasmPackage)
-	}
-	if !forbidden(jsImport) {
-		t.Fatalf("forbidden(%q) = false, want true; the allowance below must be what lets it through", jsImport)
-	}
-
-	allowed := frontendAllowances[wasmPackage]
-	if !permitted(jsImport, allowed) {
-		t.Fatalf("permitted(%q, %v) = false, want the browser frontend to cross through it", jsImport, allowed)
-	}
-	for _, token := range forbiddenImports {
-		if token == jsHostToken {
-			continue
-		}
-		if permitted(token, allowed) {
-			t.Fatalf("permitted(%q, %v) = true; the browser frontend crosses through %q alone", token, allowed, jsImport)
-		}
-	}
-
-	found := false
-	for _, imp := range imports {
-		if imp == jsImport {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("%s Imports = %v, want it to include %q", wasmPackage, imports, jsImport)
-	}
-
-	sweep(t, graph)
+	sweep(t, listGraph(t))
 }
 
 func sweep(t *testing.T, graph map[string][]string) {
@@ -337,9 +273,9 @@ func TestOSIsolation_CLIMayImportOSAndCobra(t *testing.T) {
 // path/filepath is forbidden behind the fs.FS boundary and stays available
 // to cliPackage: it does host filesystem I/O — EvalSymlinks, Walk and Glob
 // reach the real disk — so a guarded package taking it leaves that boundary
-// and the GOOS=js contract as os does. Bare path is string handling with no
-// I/O and the packages that build fs.FS names use it, so forbidding the
-// shorter prefix would take the boundary's own tool away.
+// as os does. Bare path is string handling with no I/O and the packages that
+// build fs.FS names use it, so forbidding the shorter prefix would take the
+// boundary's own tool away.
 func TestOSIsolation_ForbidsPathFilepathOutsideAFrontend(t *testing.T) {
 	const filepathImport = "path/filepath"
 
@@ -362,7 +298,7 @@ func TestOSIsolation_ForbidsPathFilepathOutsideAFrontend(t *testing.T) {
 func packageImports(t *testing.T, pkg string) []string {
 	t.Helper()
 
-	graph := importGraph(t)
+	graph := listGraph(t)
 	imports, ok := graph[pkg]
 	if !ok {
 		t.Fatalf("go list did not enumerate %s", pkg)

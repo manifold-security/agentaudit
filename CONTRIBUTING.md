@@ -31,7 +31,7 @@ Give the rule fixture coverage under `testdata/malicious/`. `TestEveryEmbeddedRu
 ## Tests and gates
 
 ```sh
-make check    # gofmt, vet, tests, race, and the js/wasm build and suite
+make check    # gofmt, vet, tests and race
 ```
 
 Everything must be green before you open a pull request.

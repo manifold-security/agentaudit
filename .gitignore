@@ -10,9 +10,6 @@ coverage.*
 /agentaudit-report.json
 /agentaudit-report.md
 
-# WASM build output
-*.wasm
-
 # A developer's own Claude config never belongs in the repo.
 .claude
 
