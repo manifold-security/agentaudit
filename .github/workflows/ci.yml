@@ -24,9 +24,11 @@ jobs:
     steps:
       # Actions pinned to full commit SHA (immutable); a tag can be repointed.
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
       # TestOSIsolation_* runs go list with GOPROXY=off; see listGraph.
@@ -36,3 +38,16 @@ jobs:
         run: go build ./...
       - name: Check
         run: make check
+
+  ci-complete:
+    name: CI Complete
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Assert all jobs passed
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
