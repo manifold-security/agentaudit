@@ -13,14 +13,12 @@ linters:
   exclusions:
     presets:
       - std-error-handling
-      - common-false-positives
     rules:
       - path: "_test\\.go$"
         linters:
           - errcheck
-      # Tests discard cleanup errors, set fixture file modes and run
-      # subprocesses.
+      # Tests read files, set modes, run subprocesses and drop cleanup errors.
       - path: "_test\\.go$"
-        text: "G(104|204|301|302|306)"
+        text: "G(104|204|301|302|304|306)"
         linters:
           - gosec

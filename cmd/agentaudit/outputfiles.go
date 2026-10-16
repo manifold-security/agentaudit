@@ -26,7 +26,7 @@ var createFile = func(name string) (io.WriteCloser, error) {
 	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return nil, err
 	}
-	return os.Create(name)
+	return os.Create(name) //nolint:gosec // G304: a fixed report name
 }
 
 func jsonEntries(blocks []block) []jsonreport.Entry {
