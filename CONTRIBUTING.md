@@ -46,6 +46,16 @@ For a guard, name the mutation that makes it fail and run that mutation under th
 
 Conventional Commits, one logical change per commit. The commit message is where the reasoning goes — it never rots and it is where reviewers look for why a line exists.
 
+## Contribution terms
+
+agentaudit is licensed under Apache-2.0. Under section 5 of the [LICENSE](LICENSE), a contribution you submit for inclusion is licensed under the same terms, with no additional terms or conditions, unless you explicitly state otherwise.
+
+Each commit must carry a sign-off certifying the [Developer Certificate of Origin 1.1](https://developercertificate.org/). Add it with `git commit -s`, which appends a `Signed-off-by:` line with your committer name and email. The pull request template asks you to confirm it.
+
+## Code of conduct
+
+Everyone taking part in this project is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Reporting a problem
 
 Open an issue with the configuration that produced the wrong result, the output you got and the output you expected. A false positive is as much a bug as a missed detection: a tool people learn to ignore protects nobody.
