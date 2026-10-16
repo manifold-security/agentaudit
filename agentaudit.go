@@ -52,11 +52,12 @@ type WarnFunc func(error)
 // One Scanner may run Scan and ScanRecursive concurrently, and its WarnFunc
 // may then be called concurrently.
 type Scanner struct {
-	agents   []adapter.AgentID
-	warn     WarnFunc
-	rulesFS  fs.FS
-	rulesDir string
-	adapters []adapter.Adapter
+	agents    []adapter.AgentID
+	warn      WarnFunc
+	rulesFS   fs.FS
+	rulesDir  string
+	adapters  []adapter.Adapter
+	recursive bool
 }
 
 // Option configures a Scanner built by New.
@@ -76,6 +77,12 @@ func New(opts ...Option) *Scanner {
 // means every registered adapter runs.
 func WithAgents(ids ...adapter.AgentID) Option {
 	return func(s *Scanner) { s.agents = ids }
+}
+
+// WithRecursive makes Select ask for what ScanRecursive reads rather than
+// what Scan reads.
+func WithRecursive() Option {
+	return func(s *Scanner) { s.recursive = true }
 }
 
 // WithWarnFunc sets the callback invoked for each non-fatal warning.
