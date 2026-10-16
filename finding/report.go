@@ -1,19 +1,15 @@
 package finding
 
 // Report is a deduped, ordered collection of Findings. It is a value, not a
-// database: construction dedupes and copies input once.
+// database: construction dedupes and copies input once. Built under a cap it
+// holds only the first findings, though Counts covers every one.
 type Report struct {
 	findings          []Finding
+	omitted           int
+	files, categories int
 	unreadableSources int
 	unparsedSources   int
 	scannedAgents     []string
-}
-
-// findingKey is the composite dedupe key: a struct, not a joined string, so
-// Go compares it field-wise and no separator choice could let a
-// caller-settable Agent forge a collision.
-type findingKey struct {
-	agent, id string
 }
 
 // NewReport builds a Report from findings, deduplicating by the composite of
@@ -22,17 +18,11 @@ type findingKey struct {
 // ID() but produced by different agents both survive. A nil or empty
 // findings slice produces a well-formed, empty Report.
 func NewReport(findings []Finding) Report {
-	seen := make(map[findingKey]struct{}, len(findings))
-	deduped := make([]Finding, 0, len(findings))
+	b := NewReportBuilder(0)
 	for _, f := range findings {
-		key := findingKey{agent: f.Agent, id: f.ID()}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		deduped = append(deduped, f)
+		b.Add(f)
 	}
-	return Report{findings: deduped}
+	return b.Report()
 }
 
 // WithUnreadableSources returns a copy of r recording how many distinct
@@ -86,12 +76,18 @@ func copyStrings(in []string) []string {
 	return out
 }
 
-// Findings returns a copy of the Report's deduped findings, in
+// Findings returns a copy of the findings the Report holds, in
 // first-occurrence order.
 func (r Report) Findings() []Finding {
 	out := make([]Finding, len(r.findings))
 	copy(out, r.findings)
 	return out
+}
+
+// OmittedFindings reports how many deduped findings the Report counts but
+// does not hold.
+func (r Report) OmittedFindings() int {
+	return r.omitted
 }
 
 // HasFindings reports whether the Report contains at least one finding.
@@ -101,8 +97,8 @@ func (r Report) HasFindings() bool {
 
 // Counts summarizes a Report: the number of deduped findings, the number of
 // distinct provenance files they span, and the number of distinct primary
-// categories they carry (each finding contributes only its Categories[0]).
-// Categories equals len(GroupByCategory()), pinned by
+// categories they carry (each contributes only its Categories[0], if any).
+// With nothing omitted, Categories equals len(GroupByCategory()), pinned by
 // TestCounts_CategoriesMatchesGroupByCategoryLength.
 type Counts struct {
 	Findings   int
@@ -115,22 +111,13 @@ type Counts struct {
 	UnparsedSources   int
 }
 
-// Counts computes a Report's Counts from its deduped findings. Only a
-// finding's primary category (Categories[0]) counts toward Categories; a
-// finding with no categories contributes none.
+// Counts computes a Report's Counts over every deduped finding, held or
+// omitted.
 func (r Report) Counts() Counts {
-	files := make(map[string]struct{})
-	categories := make(map[Category]struct{})
-	for _, f := range r.findings {
-		files[f.Capability.Provenance.File] = struct{}{}
-		if len(f.Categories) > 0 {
-			categories[f.Categories[0]] = struct{}{}
-		}
-	}
 	return Counts{
-		Findings:          len(r.findings),
-		Files:             len(files),
-		Categories:        len(categories),
+		Findings:          len(r.findings) + r.omitted,
+		Files:             r.files,
+		Categories:        r.categories,
 		UnreadableSources: r.unreadableSources,
 		UnparsedSources:   r.unparsedSources,
 	}
@@ -143,7 +130,7 @@ type CategoryGroup struct {
 	Findings []Finding
 }
 
-// GroupByCategory groups the Report's deduped findings by their primary
+// GroupByCategory groups the findings the Report holds by their primary
 // category (Categories[0]), in first-appearance order; a finding with an
 // empty Categories is skipped.
 func (r Report) GroupByCategory() []CategoryGroup {
@@ -177,8 +164,8 @@ type AgentGroup struct {
 	Groups []CategoryGroup
 }
 
-// GroupByAgent groups the Report's findings by Agent then category, in
-// first-appearance order, skipping categoryless findings and agents left
+// GroupByAgent groups the findings the Report holds by Agent then category,
+// in first-appearance order, skipping categoryless findings and agents left
 // with no group.
 func (r Report) GroupByAgent() []AgentGroup {
 	order := make([]string, 0)
