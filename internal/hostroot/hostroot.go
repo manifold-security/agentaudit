@@ -1,18 +1,17 @@
 // Package hostroot locates the project root a host-declared path set is
-// relative to. A directory picker puts the chosen folder's own name ahead of
-// every path it hands the host, and root-anchored adapter signatures match
-// only relative to the project root. The root is chosen from that folder's
-// name alone, because the files beneath it are authored by the repository
-// under scan; they can only make Rebase refuse the set.
+// relative to. A directory picker, like an archive uploaded from a folder,
+// puts the folder's own name ahead of every path it hands the host, and
+// root-anchored adapter signatures match only relative to the project root.
+// The root is chosen from that folder's name alone, because the files beneath
+// it are authored by the repository under scan; they can only make Root
+// refuse the set.
 package hostroot
 
 import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/manifold-security/agentaudit/adapter"
@@ -24,31 +23,23 @@ var (
 	errConfigBelowRoot = errors.New("the declared paths hold agent config only below the project root, where a scan does not read it")
 )
 
-// Rebase returns files keyed relative to the project root they were declared
-// under, and never drops a file.
-func Rebase(files map[string][]byte, adapters []adapter.Adapter) (map[string][]byte, error) {
-	names := slices.Sorted(maps.Keys(files))
+// Root returns the folder the names share, for the caller to strip from each,
+// or "" when they are already relative to the project root.
+func Root(names []string, adapters []adapter.Adapter) (string, error) {
 	for _, name := range names {
 		if !fs.ValidPath(name) || name == "." {
-			return nil, fmt.Errorf("hostroot: refusing %q: not an unrooted slash-separated path", name)
+			return "", fmt.Errorf("hostroot: refusing %q: not an unrooted slash-separated path", name)
 		}
 	}
 	s := newSignatures(adapters)
 	root, err := s.root(names)
 	if err != nil {
-		return nil, fmt.Errorf("hostroot: %w", err)
+		return "", fmt.Errorf("hostroot: %w", err)
 	}
 	if dir, ok := s.configBelow(names, root); ok {
-		return nil, fmt.Errorf("hostroot: %w: %q", errConfigBelowRoot, dir)
+		return "", fmt.Errorf("hostroot: %w: %q", errConfigBelowRoot, dir)
 	}
-	if root == "" {
-		return files, nil
-	}
-	rebased := make(map[string][]byte, len(files))
-	for name, data := range files {
-		rebased[strings.TrimPrefix(name, root+"/")] = data
-	}
-	return rebased, nil
+	return root, nil
 }
 
 type signatures struct {

@@ -107,7 +107,7 @@ func writeRow(w io.Writer, f finding.Finding) error {
 	_, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | `%s` |\n",
 		escapeCell(report.Escape(f.RuleID)), escapeCell(report.Escape(what)), escapeCell(report.Escape(value)), escapeCell(report.Escape(location)),
 		escapeCell(report.Escape(f.Message)), escapeCell(report.Escape(strings.Join(f.References, "; "))),
-		report.Digest(f.ID()))
+		f.Digest())
 	return err
 }
 

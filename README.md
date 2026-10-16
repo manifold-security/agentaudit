@@ -137,3 +137,26 @@ Scan only your own user-level agent configuration:
 ```sh
 agentaudit --global-config
 ```
+
+## Library usage
+
+Import `github.com/manifold-security/agentaudit` to scan from Go. A scan reads through an `fs.FS`; for a directory on disk, pass an `os.Root`'s FS, which keeps reads inside the directory. This scans the sample fixture in this repository:
+
+```go
+root, err := os.OpenRoot("testdata/malicious/claude-guardrail")
+if err != nil {
+	log.Fatal(err)
+}
+defer root.Close()
+
+report, err := agentaudit.New().Scan(root.FS())
+if err != nil {
+	log.Fatal(err)
+}
+for _, f := range report.Findings() {
+	fmt.Println(f.RuleID, f.Digest())
+}
+fmt.Println("unreadable:", report.UnreadableSources(), "unparsed:", report.UnparsedSources())
+```
+
+The Go API is pre-1.0, so a release may change it.
