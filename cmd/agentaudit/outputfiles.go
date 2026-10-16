@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
 	jsonreport "github.com/manifold-security/agentaudit/internal/report/json"
@@ -15,7 +16,16 @@ const (
 	mdReportFilename   = "agentaudit-report.md"
 )
 
+// createFile refuses a non-regular file at name: the default target is the
+// current directory, which a scanned repository controls.
 var createFile = func(name string) (io.WriteCloser, error) {
+	info, err := os.Lstat(name)
+	switch {
+	case err == nil && !info.Mode().IsRegular():
+		return nil, errors.New("exists and is not a regular file, refusing to write through it")
+	case err != nil && !errors.Is(err, fs.ErrNotExist):
+		return nil, err
+	}
 	return os.Create(name)
 }
 
