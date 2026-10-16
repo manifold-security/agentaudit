@@ -26,7 +26,7 @@ var createFile = func(name string) (io.WriteCloser, error) {
 	case err != nil && !errors.Is(err, fs.ErrNotExist):
 		return nil, err
 	}
-	return os.Create(name)
+	return os.Create(name) //nolint:gosec // G304: a fixed report name
 }
 
 func jsonEntries(blocks []block) []jsonreport.Entry {
@@ -73,12 +73,12 @@ func writeReportFile(name string, render func(io.Writer) error) error {
 	if err != nil {
 		return fmt.Errorf("agentaudit: creating %s: %w", name, err)
 	}
+	var renderErr, closeErr error
 	if err := render(f); err != nil {
-		f.Close()
-		return fmt.Errorf("agentaudit: writing %s: %w", name, err)
+		renderErr = fmt.Errorf("agentaudit: writing %s: %w", name, err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("agentaudit: closing %s: %w", name, err)
+		closeErr = fmt.Errorf("agentaudit: closing %s: %w", name, err)
 	}
-	return nil
+	return errors.Join(renderErr, closeErr)
 }

@@ -125,12 +125,12 @@ func globalBlocks(adapters []adapter.Adapter, warn func(error)) (blocks []block,
 
 		masked := maskFS{parent: fsys, allow: spec.allow}
 		if !anyPresent(masked, spec.allow) {
-			closeRoot()
+			_ = closeRoot()
 			continue
 		}
 
 		rep, err := scanGlobal(masked, warn)
-		closeRoot()
+		_ = closeRoot()
 		if err != nil {
 			return nil, false, err
 		}

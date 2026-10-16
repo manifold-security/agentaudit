@@ -2,10 +2,12 @@
 # Build automation for the AI-assistant config scanner
 
 .PHONY: all help build install test test-race vet fmt fmt-check lint \
-	check clean
+	golangci-lint-version vulncheck check clean
 
 VERSION ?= dev
 COMMIT ?=
+GOLANGCI_LINT_VERSION := v2.14.0
+GOVULNCHECK_VERSION := v1.9.0
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)"
 
 # The scanner is pure Go, so CGO buys nothing and
@@ -47,15 +49,17 @@ fmt-check:                  ## Fail if any Go file is not gofmt-clean
 		exit 1; \
 	fi
 
-lint:                       ## Run staticcheck when it is installed
-	@if command -v staticcheck >/dev/null 2>&1; then \
-		staticcheck ./...; \
-	else \
-		echo "staticcheck not installed, skipping"; \
-	fi
+lint:                       ## Run golangci-lint, gosec included
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 
-# The gates this project treats as non-negotiable.
-check: fmt-check vet test test-race  ## Run every gate
+# CI's lint job passes this to golangci-lint-action as its version.
+golangci-lint-version:
+	@echo $(GOLANGCI_LINT_VERSION)
+
+vulncheck:                  ## Scan for known vulnerabilities
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+check: fmt-check vet test test-race  ## Run every gate but lint and vulncheck
 
 clean:                      ## Remove build artifacts
 	rm -rf dist/
