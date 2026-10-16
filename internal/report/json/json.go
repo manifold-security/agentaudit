@@ -97,7 +97,7 @@ func buildDocument(r finding.Report, meta Meta) document {
 		}
 
 		out[i] = findingJSON{
-			ID:         report.Digest(f.ID()),
+			ID:         f.Digest(),
 			Agent:      f.Agent,
 			RuleID:     f.RuleID,
 			Categories: categories,

@@ -207,7 +207,7 @@ func TestWrite_IDMatchesSharedDigest(t *testing.T) {
 	doc := buf.String()
 
 	for _, f := range rep.Findings() {
-		want := report.Digest(f.ID())
+		want := f.Digest()
 		row := findRow(t, doc, f.RuleID)
 		if !strings.Contains(row, "`"+want+"`") {
 			t.Fatalf("row for %q = %q, want it to contain ID cell `%s`", f.RuleID, row, want)

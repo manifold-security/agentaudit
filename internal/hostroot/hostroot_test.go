@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +13,7 @@ import (
 	"github.com/manifold-security/agentaudit/internal/registry"
 )
 
-func TestRebaseRootsTheSetByThePickedFolderName(t *testing.T) {
+func TestRootRootsTheSetByThePickedFolderName(t *testing.T) {
 	cases := []struct {
 		name    string
 		paths   []string
@@ -314,23 +312,20 @@ func TestRebaseRootsTheSetByThePickedFolderName(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			files := map[string][]byte{}
-			for _, p := range tc.paths {
-				files[p] = []byte(p)
-			}
-
-			got, err := Rebase(files, registry.Adapters())
+			got, err := Root(tc.paths, registry.Adapters())
 
 			if tc.refusal != nil {
 				if !errors.Is(err, tc.refusal) {
-					t.Fatalf("Rebase(%v) error = %v, want %v", tc.paths, err, tc.refusal)
+					t.Fatalf("Root(%v) error = %v, want %v", tc.paths, err, tc.refusal)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Rebase(%v) error = %v, want nil", tc.paths, err)
+				t.Fatalf("Root(%v) error = %v, want nil", tc.paths, err)
 			}
-			assertRebased(t, files, got, tc.root)
+			if got != tc.root {
+				t.Fatalf("Root(%v) = %q, want %q", tc.paths, got, tc.root)
+			}
 		})
 	}
 }
@@ -349,9 +344,9 @@ func (zedAdapter) Signatures() []adapter.Signature {
 func (zedAdapter) Parse(fs.FS) ([]ir.Entity, []adapter.Warning, error) { return nil, nil, nil }
 
 // The config-folder and marker names come from the adapters' signatures, so
-// an agent this package has never heard of is kept, stripped or refused by
-// its own declared locations.
-func TestRebaseTakesItsFolderNamesFromTheAdapters(t *testing.T) {
+// an agent this package has never heard of is kept, named as the root, or
+// refused by its own declared locations.
+func TestRootTakesItsFolderNamesFromTheAdapters(t *testing.T) {
 	cases := []struct {
 		name    string
 		paths   []string
@@ -367,30 +362,27 @@ func TestRebaseTakesItsFolderNamesFromTheAdapters(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			files := map[string][]byte{}
-			for _, p := range tc.paths {
-				files[p] = []byte(p)
-			}
-
-			got, err := Rebase(files, []adapter.Adapter{zedAdapter{}})
+			got, err := Root(tc.paths, []adapter.Adapter{zedAdapter{}})
 
 			if tc.refusal != nil {
 				if !errors.Is(err, tc.refusal) {
-					t.Fatalf("Rebase(%v) error = %v, want %v", tc.paths, err, tc.refusal)
+					t.Fatalf("Root(%v) error = %v, want %v", tc.paths, err, tc.refusal)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Rebase(%v) error = %v, want nil", tc.paths, err)
+				t.Fatalf("Root(%v) error = %v, want nil", tc.paths, err)
 			}
-			assertRebased(t, files, got, tc.root)
+			if got != tc.root {
+				t.Fatalf("Root(%v) = %q, want %q", tc.paths, got, tc.root)
+			}
 		})
 	}
 }
 
 // A refusal names the folder it could not settle, so a reader can tell a
 // picked folder that sits too high from one that is simply ambiguous.
-func TestRebaseRefusalsNameTheFolderInQuestion(t *testing.T) {
+func TestRootRefusalsNameTheFolderInQuestion(t *testing.T) {
 	cases := []struct {
 		name  string
 		paths []string
@@ -403,15 +395,10 @@ func TestRebaseRefusalsNameTheFolderInQuestion(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			files := map[string][]byte{}
-			for _, p := range tc.paths {
-				files[p] = nil
-			}
-
-			_, err := Rebase(files, registry.Adapters())
+			_, err := Root(tc.paths, registry.Adapters())
 
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Rebase(%v) error = %v, want it to name %s", tc.paths, err, tc.want)
+				t.Fatalf("Root(%v) error = %v, want it to name %s", tc.paths, err, tc.want)
 			}
 		})
 	}
@@ -419,12 +406,12 @@ func TestRebaseRefusalsNameTheFolderInQuestion(t *testing.T) {
 
 // A name io/fs cannot hold is refused by name before any folder is walked
 // up from it, since an absolute path's parents never reach ".".
-func TestRebaseRefusesANameIOFSCannotHold(t *testing.T) {
+func TestRootRefusesANameIOFSCannotHold(t *testing.T) {
 	for _, name := range []string{"/absolute/settings.json", "myrepo/../.mcp.json", "."} {
 		t.Run(name, func(t *testing.T) {
 			refused := make(chan error, 1)
 			go func() {
-				_, err := Rebase(map[string][]byte{name: nil, "myrepo/README.md": nil}, registry.Adapters())
+				_, err := Root([]string{name, "myrepo/README.md"}, registry.Adapters())
 				refused <- err
 			}()
 
@@ -432,30 +419,11 @@ func TestRebaseRefusesANameIOFSCannotHold(t *testing.T) {
 			select {
 			case err = <-refused:
 			case <-time.After(10 * time.Second):
-				t.Fatalf("Rebase(%q) did not return", name)
+				t.Fatalf("Root(%q) did not return", name)
 			}
 			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%q", name)) {
-				t.Fatalf("Rebase(%q) error = %v, want a refusal naming it", name, err)
+				t.Fatalf("Root(%q) error = %v, want a refusal naming it", name, err)
 			}
 		})
-	}
-}
-
-func assertRebased(t *testing.T, declared, got map[string][]byte, root string) {
-	t.Helper()
-
-	if len(got) != len(declared) {
-		t.Fatalf("Rebase kept %d of %d declared files: %v", len(got), len(declared), slices.Sorted(maps.Keys(got)))
-	}
-	prefix := ""
-	if root != "" {
-		prefix = root + "/"
-	}
-	for name, data := range declared {
-		rebased := strings.TrimPrefix(name, prefix)
-		kept, ok := got[rebased]
-		if !ok || string(kept) != string(data) {
-			t.Fatalf("Rebase keys = %v, want %q rooted at %q as %q", slices.Sorted(maps.Keys(got)), name, root, rebased)
-		}
 	}
 }

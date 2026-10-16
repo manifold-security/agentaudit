@@ -2,6 +2,7 @@ package finding
 
 import (
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/manifold-security/agentaudit/internal/ir"
@@ -101,6 +102,59 @@ func TestID_FrozenLiteralUnaffectedByAgent(t *testing.T) {
 	const want = "secrets.env-plaintext\x1fenvVar\x1fAPI_KEY\x1fsecret\x1fsettings.json\x1fenv.API_KEY"
 	if got := f.ID(); got != want {
 		t.Fatalf("ID() = %q, want %q", got, want)
+	}
+}
+
+// A finding's digest is the id the JSON report prints for it: want is the id
+// the json reporter's golden carries for this same hand-built finding.
+func TestDigest_FrozenLiteralMatchesTheJSONReportID(t *testing.T) {
+	f := Finding{
+		RuleID:     "hook.autostart",
+		Agent:      "claude-code",
+		Categories: []Category{"lifecycle"},
+		Capability: Capability{
+			Entity:     ir.Hook{Event: "SessionStart", Command: "notify.sh"},
+			Provenance: Provenance{File: ".claude/settings.json", Key: "hooks[0]"},
+		},
+	}
+
+	const want = "8308ec88ad87a751c7edda0a69cf6bcd"
+	if got := f.Digest(); got != want {
+		t.Fatalf("Digest() = %q, want %q", got, want)
+	}
+}
+
+func TestDigest_IsStableAndFormatted(t *testing.T) {
+	f := Finding{
+		RuleID: "hook.autostart",
+		Capability: Capability{
+			Entity:     ir.Hook{Event: "SessionStart", Command: "notify.sh"},
+			Provenance: Provenance{File: ".claude/settings.json", Key: "hooks[0]"},
+		},
+	}
+	hexPattern := regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+	first := f.Digest()
+	second := f.Digest()
+
+	if first != second {
+		t.Fatalf("Digest() = %q then %q, want the same value both times", first, second)
+	}
+	if !hexPattern.MatchString(first) {
+		t.Fatalf("Digest() = %q, want it to match %s", first, hexPattern)
+	}
+}
+
+func TestDigest_DistinctRuleIDsOnOneEntityYieldDistinctDigests(t *testing.T) {
+	capability := Capability{
+		Entity:     ir.MCPServer{Name: "fs", Transport: ir.TransportStdio, Command: "npx mcp-fs"},
+		Provenance: Provenance{File: ".mcp.json", Key: "mcpServers.fs"},
+	}
+	a := Finding{RuleID: "mcp.stdio", Capability: capability}
+	b := Finding{RuleID: "mcp.unpinned-npx-command", Capability: capability}
+
+	if a.Digest() == b.Digest() {
+		t.Fatalf("Digest() collapsed two distinct findings to the same digest %q", a.Digest())
 	}
 }
 

@@ -1,6 +1,10 @@
 package finding
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
 
 // Finding is a single detected capability, described by a rule, tagged with
 // zero or more categories, and located via its Capability's Provenance.
@@ -21,6 +25,13 @@ type Finding struct {
 // separator, part order, and part set must not change.
 func (f Finding) ID() string {
 	return stableID(f.RuleID, f.Capability.Entity.Identity(), f.Capability.Provenance.File, f.Capability.Provenance.Key)
+}
+
+// Digest returns the id the JSON report prints for the Finding, ID() reduced
+// to 32 lowercase hex digits. It is frozen on the same terms as ID().
+func (f Finding) Digest() string {
+	sum := sha256.Sum256([]byte(f.ID()))
+	return hex.EncodeToString(sum[:16])
 }
 
 // stableID joins parts with the ASCII Unit Separator (0x1f), mirroring

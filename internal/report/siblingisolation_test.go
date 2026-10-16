@@ -11,7 +11,7 @@ var reporterDirs = []string{
 	"md",
 }
 
-// Every reporter couples to Describe/Digest only through this shared parent
+// Every reporter couples to Describe only through this shared parent
 // package, never through a shortcut sibling import.
 func TestReporterPackagesStaySiblingIndependent(t *testing.T) {
 	for _, dir := range reporterDirs {

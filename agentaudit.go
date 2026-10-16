@@ -1,5 +1,8 @@
 // Package agentaudit composes discovery, adapters, and the rule engine behind
-// one Scan(fs.FS) entry point, re-exporting the domain types callers need.
+// the Scanner's scan methods, re-exporting the domain types callers need.
+//
+// To scan a directory on disk, pass the FS of os.OpenRoot(dir): os.DirFS(dir)
+// follows a symlink that leads out of dir, and an os.Root refuses one.
 package agentaudit
 
 import (
@@ -28,6 +31,7 @@ type (
 	Finding    = finding.Finding
 	Report     = finding.Report
 	Capability = finding.Capability
+	Entity     = finding.Entity
 	Provenance = finding.Provenance
 	Category   = finding.Category
 	AgentID    = adapter.AgentID
@@ -45,6 +49,8 @@ const (
 type WarnFunc func(error)
 
 // Scanner holds the resolved configuration built by New and its Options.
+// One Scanner may run Scan and ScanRecursive concurrently, and its WarnFunc
+// may then be called concurrently.
 type Scanner struct {
 	agents   []adapter.AgentID
 	warn     WarnFunc
