@@ -6,6 +6,8 @@ var WithRulesFS = withRulesFS
 
 var WithAdapters = withAdapters
 
+var Bound = bound
+
 // EmbeddedRuleIDs reads ids from the shipped ruleset itself, so a coverage
 // guard built on it picks up a rule added later.
 func EmbeddedRuleIDs() ([]string, error) {
