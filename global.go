@@ -14,7 +14,8 @@ import (
 // ScanGlobal returns a Report for fsys: it does not resolve a path or name a
 // home.
 func (s *Scanner) ScanGlobal(fsys fs.FS) (finding.Report, error) {
-	return s.scanFS(bound(context.Background(), fsys, s.maxFileSize), newWarnSink(s.emitFunc()), globalPass{})
+	sink := newWarnSink(s.emitFunc())
+	return s.scanFS(bound(context.Background(), fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), sink), sink, globalPass{})
 }
 
 type globalPass struct{}

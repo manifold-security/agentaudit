@@ -53,14 +53,15 @@ type WarnFunc func(error)
 // One Scanner may run Scan and ScanRecursive concurrently, and its WarnFunc
 // may then be called concurrently.
 type Scanner struct {
-	agents      []adapter.AgentID
-	warn        WarnFunc
-	rulesFS     fs.FS
-	rulesDir    string
-	adapters    []adapter.Adapter
-	recursive   bool
-	maxFileSize int64
-	maxFindings int
+	agents       []adapter.AgentID
+	warn         WarnFunc
+	rulesFS      fs.FS
+	rulesDir     string
+	adapters     []adapter.Adapter
+	recursive    bool
+	maxFileSize  int64
+	maxFindings  int
+	maxReadBytes int64
 }
 
 // Option configures a Scanner built by New.
