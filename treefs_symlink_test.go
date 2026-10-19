@@ -77,6 +77,26 @@ func TestSymlinkResolutionMatchesOSRoot(t *testing.T) {
 			name:  "dangling",
 			links: map[string]string{".claude": "missing"},
 		},
+		stepRow(0, 130, "a/../", 0, false),
+		stepRow(23, 9, "a/../", 4, true),
+		stepRow(23, 9, "a/../", 5, false),
+		stepRow(27, 8, "a/b/../../", 0, true),
+		stepRow(27, 9, "a/b/../../", 0, false),
+		stepRow(23, 9, "a/./../", 4, true),
+		stepRow(27, 8, "a/b/.././../", 0, true),
+		stepRow(27, 8, "a/b/..//../", 0, true),
+		{
+			name:    "a final dot past 255 steps",
+			links:   map[string]string{".claude": strings.Repeat("x/", 23) + strings.Repeat("a/../", 9) + "d/d/d/d/d/real/."},
+			files:   map[string]string{strings.Repeat("x/", 23) + "a/b/keep": "", strings.Repeat("x/", 23) + "d/d/d/d/d/real/settings.json": symlinkRowSettings},
+			refused: true,
+		},
+		{
+			name:    "a final restart to the root past 255 steps",
+			links:   map[string]string{".claude": strings.Repeat("a/../", 126) + "a/.."},
+			files:   map[string]string{"a/keep": "", "settings.json": symlinkRowSettings},
+			refused: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,7 +136,7 @@ func TestScanCountsAMalformedLinkTargetAsUnreadable(t *testing.T) {
 	}
 	for name, target := range map[string]string{
 		"NUL":                    "real\x00/x",
-		"longer than 4096 bytes": strings.Repeat("./", 2049) + "real",
+		"longer than 4095 bytes": strings.Repeat("./", 2046) + "real",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := scan(target).UnreadableSources(); got != 1 {
@@ -147,6 +167,21 @@ func chainRow(n int, reads bool) symlinkRow {
 		name:    fmt.Sprintf("chain of %d links", n),
 		links:   links,
 		files:   map[string]string{"real/cfg/settings.json": symlinkRowSettings},
+		reads:   reads,
+		refused: !reads,
+	}
+}
+
+func stepRow(prefix, restarts int, pair string, depth int, reads bool) symlinkRow {
+	under := strings.Repeat("x/", prefix)
+	beyond := under + strings.Repeat("d/", depth)
+	return symlinkRow{
+		name:  fmt.Sprintf("%d restarts by %q past %d directories", restarts, pair, prefix+depth),
+		links: map[string]string{".claude": under + strings.Repeat(pair, restarts) + beyond[len(under):] + "real"},
+		files: map[string]string{
+			under + "a/b/keep":            "",
+			beyond + "real/settings.json": symlinkRowSettings,
+		},
 		reads:   reads,
 		refused: !reads,
 	}

@@ -34,14 +34,21 @@ type Entry struct {
 
 type node struct {
 	mode     fs.FileMode
+	path     string
 	children []string
+}
+
+type edge struct {
+	dir  *node
+	name string
 }
 
 // FS serves a tree listing, reading each file's content and each symlink's
 // target through the blob function New was given.
 type FS struct {
-	nodes map[string]*node
-	blob  func(path string) ([]byte, bool)
+	root *node
+	kids map[edge]*node
+	blob func(path string) ([]byte, bool)
 
 	mu      sync.Mutex
 	missing map[string]struct{}
@@ -59,47 +66,57 @@ var _ interface {
 // an invalid, duplicate or conflicting entry. blob returns false if unheld.
 func New(entries []Entry, blob func(path string) ([]byte, bool)) (*FS, error) {
 	t := &FS{
-		nodes:   map[string]*node{".": {mode: fs.ModeDir | 0o755}},
+		root:    &node{mode: fs.ModeDir | 0o755, path: "."},
+		kids:    make(map[edge]*node, len(entries)),
 		blob:    blob,
 		missing: map[string]struct{}{},
 	}
+	nodes := map[string]*node{".": t.root}
 	listed := make(map[string]bool, len(entries))
 	for _, e := range entries {
-		if e.Path == "." || len(e.Path) > maxPath || strings.IndexByte(e.Path, 0) >= 0 || !fs.ValidPath(e.Path) {
+		if len(e.Path) > maxPath {
+			return nil, fmt.Errorf("treefs: path %q... is %d bytes, over %d", e.Path[:32], len(e.Path), maxPath)
+		}
+		if e.Path == "." || strings.IndexByte(e.Path, 0) >= 0 || !fs.ValidPath(e.Path) {
 			return nil, fmt.Errorf("treefs: invalid path %q", e.Path)
 		}
 		if bits.OnesCount32(uint32(e.Mode&fs.ModeType)) > 1 {
-			return nil, fmt.Errorf("treefs: %q has more than one file type (%v)", e.Path, e.Mode)
+			return nil, fmt.Errorf("treefs: %q has an unsupported file type (%v)", e.Path, e.Mode)
 		}
 		if listed[e.Path] {
 			return nil, fmt.Errorf("treefs: duplicate path %q", e.Path)
 		}
 		listed[e.Path] = true
-		if implied, ok := t.nodes[e.Path]; ok {
+		if implied, ok := nodes[e.Path]; ok {
 			if !e.Mode.IsDir() {
 				return nil, fmt.Errorf("treefs: %q is not a directory but has entries below it", e.Path)
 			}
 			implied.mode = e.Mode
 			continue
 		}
-		t.nodes[e.Path] = &node{mode: e.Mode}
-		for child := e.Path; ; {
-			dir := path.Dir(child)
-			parent, ok := t.nodes[dir]
+		child := &node{mode: e.Mode, path: e.Path}
+		nodes[e.Path] = child
+		for {
+			dir, name := ".", child.path
+			if i := strings.LastIndexByte(child.path, '/'); i >= 0 {
+				dir, name = child.path[:i], child.path[i+1:]
+			}
+			parent, ok := nodes[dir]
 			if !ok {
-				parent = &node{mode: fs.ModeDir | 0o755}
-				t.nodes[dir] = parent
+				parent = &node{mode: fs.ModeDir | 0o755, path: dir}
+				nodes[dir] = parent
 			} else if !parent.mode.IsDir() {
 				return nil, fmt.Errorf("treefs: %q is not a directory but has entries below it", dir)
 			}
-			parent.children = append(parent.children, path.Base(child))
+			parent.children = append(parent.children, name)
+			t.kids[edge{parent, name}] = child
 			if ok {
 				break
 			}
-			child = dir
+			child = parent
 		}
 	}
-	for _, n := range t.nodes {
+	for _, n := range nodes {
 		slices.Sort(n.children)
 	}
 	return t, nil
@@ -142,52 +159,84 @@ func (t *FS) unheld(p string) error {
 
 const (
 	maxSymlinks = 8
-	maxPath     = 4096
+	maxSteps    = 255
+	maxRestarts = 8
+	maxPath     = 4095
 )
 
 func (t *FS) resolve(op, name string, follow bool) (string, *node, error) {
 	fail := func(err error) (string, *node, error) {
 		return "", nil, &fs.PathError{Op: op, Path: name, Err: err}
 	}
-	if !fs.ValidPath(name) {
+	if !fs.ValidPath(name) || strings.IndexByte(name, 0) >= 0 {
 		return fail(fs.ErrInvalid)
 	}
-	resolved := []string{"."}
+	resolved := []*node{t.root}
 	pending := strings.Split(name, "/")
-	links := 0
+	links, steps, restarts := 0, 0, 0
+	overBudget := func(n int) bool {
+		steps += n
+		return steps > maxSteps && restarts > maxRestarts
+	}
 	for len(pending) > 0 {
 		seg := pending[0]
 		pending = pending[1:]
-		switch seg {
-		case "", ".":
+		switch {
+		case seg == "" || seg == "." && !onlySlashes(pending):
 			continue
-		case "..":
-			if len(resolved) == 1 {
+		case seg == ".":
+			if overBudget(1) {
+				return fail(errNameTooLong)
+			}
+			continue
+		case seg == "..":
+			if overBudget(1) {
+				return fail(errNameTooLong)
+			}
+			restarts++
+			up := 1
+			for len(pending) > 0 && (pending[0] == ".." || pending[0] == "" || pending[0] == "." && !onlySlashes(pending[1:])) {
+				if pending[0] == ".." {
+					up++
+				}
+				pending = pending[1:]
+			}
+			if up >= len(resolved) {
 				return fail(errEscapes)
 			}
-			resolved = resolved[:len(resolved)-1]
+			resolved = resolved[:len(resolved)-up]
+			// os.Root restarts from the root after .., re-walking the prefix.
+			rewalk := len(resolved) - 1
+			if rewalk == 0 && onlySlashes(pending) {
+				rewalk = 1
+			}
+			if overBudget(rewalk) {
+				return fail(errNameTooLong)
+			}
 			continue
 		}
-		p := path.Join(resolved[len(resolved)-1], seg)
-		n, ok := t.nodes[p]
+		if overBudget(1) {
+			return fail(errNameTooLong)
+		}
+		n, ok := t.kids[edge{resolved[len(resolved)-1], seg}]
 		if !ok {
 			return fail(fs.ErrNotExist)
 		}
 		last := len(pending) == 0
 		if n.mode&fs.ModeSymlink != 0 && (follow || !last) {
-			target, ok := t.blob(p)
+			target, ok := t.blob(n.path)
 			if !ok {
-				return fail(t.unheld(p))
+				return fail(t.unheld(n.path))
 			}
 			links++
 			if links > maxSymlinks {
 				return fail(errTooManyLinks)
 			}
-			if len(target) == 0 || bytes.IndexByte(target, 0) >= 0 {
-				return fail(fs.ErrInvalid)
-			}
 			if len(target) > maxPath {
 				return fail(errNameTooLong)
+			}
+			if len(target) == 0 || bytes.IndexByte(target, 0) >= 0 {
+				return fail(fs.ErrInvalid)
 			}
 			if path.IsAbs(string(target)) {
 				return fail(errEscapes)
@@ -198,10 +247,19 @@ func (t *FS) resolve(op, name string, follow bool) (string, *node, error) {
 		if !last && !n.mode.IsDir() {
 			return fail(errNotDir)
 		}
-		resolved = append(resolved, p)
+		resolved = append(resolved, n)
 	}
-	canon := resolved[len(resolved)-1]
-	return canon, t.nodes[canon], nil
+	n := resolved[len(resolved)-1]
+	return n.path, n, nil
+}
+
+func onlySlashes(segs []string) bool {
+	for _, s := range segs {
+		if s != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *FS) Open(name string) (fs.File, error) {
@@ -265,20 +323,20 @@ func (t *FS) ReadLink(name string) (string, error) {
 }
 
 func (t *FS) ReadDir(name string) ([]fs.DirEntry, error) {
-	canon, n, err := t.resolve("readdir", name, true)
+	_, n, err := t.resolve("readdir", name, true)
 	if err != nil {
 		return nil, err
 	}
 	if !n.mode.IsDir() {
 		return nil, &fs.PathError{Op: "readdir", Path: name, Err: errNotDir}
 	}
-	return t.entries(canon, n), nil
+	return t.entries(n), nil
 }
 
-func (t *FS) entries(canon string, n *node) []fs.DirEntry {
+func (t *FS) entries(n *node) []fs.DirEntry {
 	out := make([]fs.DirEntry, len(n.children))
 	for i, c := range n.children {
-		out[i] = fs.FileInfoToDirEntry(fileInfo{name: c, n: t.nodes[path.Join(canon, c)]})
+		out[i] = fs.FileInfoToDirEntry(fileInfo{name: c, n: t.kids[edge{n, c}]})
 	}
 	return out
 }
@@ -328,7 +386,7 @@ func (d *dirFile) Read([]byte) (int, error) {
 func (d *dirFile) Close() error { return nil }
 
 func (d *dirFile) ReadDir(count int) ([]fs.DirEntry, error) {
-	all := d.t.entries(d.canon, d.info.n)
+	all := d.t.entries(d.info.n)
 	rest := all[d.off:]
 	if count <= 0 {
 		d.off = len(all)

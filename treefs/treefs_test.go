@@ -28,33 +28,41 @@ func TestNewRefusesAnEntryThatIsNotOneNode(t *testing.T) {
 		name    string
 		entries []treefs.Entry
 		path    string
+		reason  string
 	}{
-		{"parent segment", []treefs.Entry{{Path: "../x", Mode: file}}, "../x"},
-		{"absolute", []treefs.Entry{{Path: "/x", Mode: file}}, "/x"},
-		{"empty segment", []treefs.Entry{{Path: "a//b", Mode: file}}, "a//b"},
-		{"trailing slash", []treefs.Entry{{Path: "a/", Mode: file}}, "a/"},
-		{"root", []treefs.Entry{{Path: ".", Mode: fs.ModeDir | 0o755}}, "."},
-		{"duplicate", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a", Mode: file}}, "a"},
-		{"duplicate directory", []treefs.Entry{{Path: "a", Mode: fs.ModeDir | 0o755}, {Path: "a", Mode: fs.ModeDir | 0o755}}, "a"},
-		{"file then child", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a/b", Mode: file}}, "a"},
-		{"child then file", []treefs.Entry{{Path: "a/b", Mode: file}, {Path: "a", Mode: file}}, "a"},
-		{"file then grandchild", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a/b/c", Mode: file}}, "a"},
-		{"link then child", []treefs.Entry{{Path: "a", Mode: fs.ModeSymlink | 0o777}, {Path: "a/b", Mode: file}}, "a"},
-		{"child then link", []treefs.Entry{{Path: "a/b", Mode: file}, {Path: "a", Mode: fs.ModeSymlink | 0o777}}, "a"},
-		{"NUL", []treefs.Entry{{Path: "a\x00b", Mode: file}}, "a\x00b"},
-		{"longer than 4096 bytes", []treefs.Entry{{Path: strings.Repeat("a", 4097), Mode: file}}, strings.Repeat("a", 4097)},
+		{"parent segment", []treefs.Entry{{Path: "../x", Mode: file}}, "../x", ""},
+		{"absolute", []treefs.Entry{{Path: "/x", Mode: file}}, "/x", ""},
+		{"empty segment", []treefs.Entry{{Path: "a//b", Mode: file}}, "a//b", ""},
+		{"trailing slash", []treefs.Entry{{Path: "a/", Mode: file}}, "a/", ""},
+		{"root", []treefs.Entry{{Path: ".", Mode: fs.ModeDir | 0o755}}, ".", ""},
+		{"duplicate", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a", Mode: file}}, "a", ""},
+		{"duplicate directory", []treefs.Entry{{Path: "a", Mode: fs.ModeDir | 0o755}, {Path: "a", Mode: fs.ModeDir | 0o755}}, "a", ""},
+		{"file then child", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a/b", Mode: file}}, "a", ""},
+		{"child then file", []treefs.Entry{{Path: "a/b", Mode: file}, {Path: "a", Mode: file}}, "a", ""},
+		{"file then grandchild", []treefs.Entry{{Path: "a", Mode: file}, {Path: "a/b/c", Mode: file}}, "a", ""},
+		{"link then child", []treefs.Entry{{Path: "a", Mode: fs.ModeSymlink | 0o777}, {Path: "a/b", Mode: file}}, "a", ""},
+		{"child then link", []treefs.Entry{{Path: "a/b", Mode: file}, {Path: "a", Mode: fs.ModeSymlink | 0o777}}, "a", ""},
+		{"NUL", []treefs.Entry{{Path: "a\x00b", Mode: file}}, "a\x00b", ""},
 		{"directory and link at once", []treefs.Entry{
 			{Path: "cfg", Mode: fs.ModeDir | fs.ModeSymlink | 0o777},
 			{Path: "cfg/settings.json", Mode: file},
-		}, "cfg"},
+		}, "cfg", "unsupported file type"},
+		{"character device", []treefs.Entry{{Path: "dev", Mode: fs.ModeDevice | fs.ModeCharDevice | 0o644}}, "dev", "unsupported file type"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := treefs.New(tt.entries, held(nil))
-			if err == nil || !strings.Contains(err.Error(), strconv.Quote(tt.path)) {
-				t.Fatalf("New() error = %v, want one naming %q", err, tt.path)
+			if err == nil || !strings.Contains(err.Error(), strconv.Quote(tt.path)) || !strings.Contains(err.Error(), tt.reason) {
+				t.Fatalf("New() error = %v, want one naming %q and %q", err, tt.path, tt.reason)
 			}
 		})
+	}
+}
+
+func TestNewNamesAnOverlongPathByPrefixAndLength(t *testing.T) {
+	_, err := treefs.New([]treefs.Entry{{Path: strings.Repeat("a", 4096), Mode: 0o644}}, held(nil))
+	if err == nil || !strings.Contains(err.Error(), "4096") || !strings.Contains(err.Error(), strings.Repeat("a", 32)) || len(err.Error()) > 200 {
+		t.Fatalf("New() error = %.300v, want a short one naming a prefix and the length 4096", err)
 	}
 }
 
@@ -232,8 +240,8 @@ func TestSealFailsResolutionThroughAnUnheldLink(t *testing.T) {
 	}
 }
 
-func TestNewAcceptsAPathOf4096Bytes(t *testing.T) {
-	long := strings.Repeat("a", 4096)
+func TestNewAcceptsAPathOf4095Bytes(t *testing.T) {
+	long := strings.Repeat("a", 4095)
 	tree, err := treefs.New([]treefs.Entry{{Path: long, Mode: 0o644}}, held(nil))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -247,7 +255,7 @@ func TestAMalformedLinkTargetIsRefused(t *testing.T) {
 	for name, target := range map[string]string{
 		"empty":                  "",
 		"NUL":                    "file\x00/x",
-		"longer than 4096 bytes": strings.Repeat("./", 2049) + "file",
+		"longer than 4095 bytes": strings.Repeat("./", 2046) + "file",
 	} {
 		t.Run(name, func(t *testing.T) {
 			info, err := linkTo(t, target).Stat("link")
@@ -256,8 +264,18 @@ func TestAMalformedLinkTargetIsRefused(t *testing.T) {
 			}
 		})
 	}
-	if _, err := linkTo(t, strings.Repeat("./", 2046)+"file").Stat("link"); err != nil {
-		t.Fatalf("Stat(link) through a 4096-byte target error = %v, want nil", err)
+	if _, err := linkTo(t, strings.Repeat("./", 2045)+"/file").Stat("link"); err != nil {
+		t.Fatalf("Stat(link) through a 4095-byte target error = %v, want nil", err)
+	}
+}
+
+func TestALongLinkTargetIsRefusedBeforeItIsScannedForNUL(t *testing.T) {
+	if _, err := linkTo(t, "file\x00").Stat("link"); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Stat(link) through a short NUL target error = %v, want fs.ErrInvalid", err)
+	}
+	_, err := linkTo(t, strings.Repeat("./", 2046)+"file\x00").Stat("link")
+	if err == nil || errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("Stat(link) error = %v, want the length refusal, not fs.ErrInvalid", err)
 	}
 }
 
@@ -318,7 +336,7 @@ func TestEveryMethodRefusesAnInvalidName(t *testing.T) {
 		"ReadLink": func(n string) error { _, err := tree.ReadLink(n); return err },
 	}
 	for method, call := range calls {
-		for _, name := range []string{"/top", "cfg//a.json", "cfg/./link", "cfg/"} {
+		for _, name := range []string{"/top", "cfg//a.json", "cfg/./link", "cfg/", "top\x00"} {
 			if err := call(name); !errors.Is(err, fs.ErrInvalid) {
 				t.Fatalf("%s(%q) error = %v, want fs.ErrInvalid", method, name, err)
 			}
@@ -333,5 +351,29 @@ func TestReadDirAndReadLinkRefuseTheWrongKind(t *testing.T) {
 	}
 	if target, err := tree.ReadLink("top"); err == nil {
 		t.Fatalf("ReadLink(top) = %q, nil; want an error for a file", target)
+	}
+}
+
+func TestWalkDirOfADeepChainStaysUnderItsAllocationBound(t *testing.T) {
+	const depth, bound = 2047, 200_000
+	chain := strings.TrimSuffix(strings.Repeat("a/", depth), "/")
+	tree, err := treefs.New([]treefs.Entry{{Path: chain, Mode: fs.ModeDir | 0o755}}, held(nil))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	visited := 0
+	allocs := testing.AllocsPerRun(1, func() {
+		visited = 0
+		_ = fs.WalkDir(tree, ".", func(string, fs.DirEntry, error) error {
+			visited++
+			return nil
+		})
+	})
+	if visited != depth+1 {
+		t.Fatalf("fs.WalkDir visited %d paths, want %d", visited, depth+1)
+	}
+	if allocs > bound {
+		t.Fatalf("fs.WalkDir of a %d-level chain made %.0f allocations, want at most %d", depth, allocs, bound)
 	}
 }
