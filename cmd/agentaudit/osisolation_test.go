@@ -14,11 +14,14 @@ const modulePath = "github.com/manifold-security/agentaudit"
 // cliPackage may reach the OS or a third-party CLI framework.
 const cliPackage = modulePath + "/cmd/agentaudit"
 
+const remotePackage = modulePath + "/remote"
+
 // frontendAllowances names, per frontend, the forbiddenImports tokens that
 // frontend may reach. A frontend carries the module's boundary to a host, so
 // it is allowed what that host costs and nothing beyond.
 var frontendAllowances = map[string][]string{
-	cliPackage: forbiddenImports,
+	cliPackage:    forbiddenImports,
+	remotePackage: {"os", "net", "syscall", "path/filepath"},
 }
 
 // permitted reports whether imp is one of tokens or a subpackage of one:
@@ -51,6 +54,10 @@ var tomlPackages = []string{
 
 const tomlImport = "github.com/pelletier/go-toml/v2"
 
+var gogitPackages = []string{remotePackage}
+
+const gogitModule = "github.com/go-git/go-git/v5"
+
 // forbiddenImports are the tokens no package outside frontends may reach.
 var forbiddenImports = []string{"os", "net", "syscall", "path/filepath", "github.com/spf13/cobra"}
 
@@ -63,6 +70,7 @@ var enumerationFloor = []string{
 	modulePath + "/internal/report/md",
 	modulePath + "/internal/report/pretty",
 	modulePath + "/internal/tomlconf",
+	remotePackage,
 }
 
 // listFormat's first field is the package: no import path contains a space.
@@ -111,7 +119,7 @@ func firstParty(pkg string) bool {
 }
 
 // thirdParty reports whether pkg comes from another module: a stdlib path
-// carries no dot in its first segment, and neither does this module's prefix.
+// carries no dot in its first segment.
 func thirdParty(pkg string) bool {
 	if firstParty(pkg) {
 		return false
@@ -138,11 +146,11 @@ func reach(graph map[string][]string, pkg string) []string {
 	return order
 }
 
-// No package this module owns, other than a frontend, reaches a
-// forbiddenImports token — through its own imports or through anything they
-// lead to — and a confined decoder is imported only from the packages its own
-// list names. Enumerating from go list is what makes that hold for a package
-// added later.
+// No package this module owns reaches a forbiddenImports token its
+// frontendAllowances entry does not name, through its own imports or the
+// first- and third-party packages they lead to, and none imports a confined
+// dependency its list does not name. Enumerating from go list is what makes
+// that hold for a package added later.
 func TestOSIsolation_EngineAndReporterPackages(t *testing.T) {
 	sweep(t, listGraph(t))
 }
@@ -179,6 +187,13 @@ func sweep(t *testing.T, graph map[string][]string) {
 			for _, imp := range graph[pkg] {
 				if imp == tomlImport {
 					t.Fatalf("%s imports %q, which is confined to %v", pkg, tomlImport, tomlPackages)
+				}
+			}
+		}
+		if !slices.Contains(gogitPackages, pkg) {
+			for _, imp := range graph[pkg] {
+				if permitted(imp, []string{gogitModule}) {
+					t.Fatalf("%s imports %q, which is confined to %v", pkg, imp, gogitPackages)
 				}
 			}
 		}
@@ -293,6 +308,52 @@ func TestOSIsolation_ForbidsPathFilepathOutsideAFrontend(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s Imports = %v, want it to include %q", cliPackage, imports, filepathImport)
+}
+
+// remote reaches every token its allowance names, so no token in it widens
+// the sweep's exception for nothing.
+func TestOSIsolation_RemoteReachesEveryTokenItsAllowanceNames(t *testing.T) {
+	graph := listGraph(t)
+	allowed := frontendAllowances[remotePackage]
+	if len(allowed) == 0 {
+		t.Fatalf("frontendAllowances[%s] is empty; this guard would check nothing", remotePackage)
+	}
+	for _, token := range allowed {
+		reached := false
+		for _, dep := range reach(graph, remotePackage) {
+			for _, imp := range graph[dep] {
+				if permitted(imp, []string{token}) {
+					reached = true
+				}
+			}
+		}
+		if !reached {
+			t.Fatalf("%s reaches no package under %q, which its allowance names", remotePackage, token)
+		}
+	}
+}
+
+// remote's own non-test code imports no forbidden package but net/http.
+// The allowance admits os for go-git's sake, so the sweep would pass an os
+// import here.
+func TestOSIsolation_RemoteImportsGoGitAndNoOtherForbiddenPackageThanNetHTTP(t *testing.T) {
+	const netHTTP = "net/http"
+	imports := packageImports(t, remotePackage)
+
+	viaGoGit, viaHTTP := false, false
+	for _, imp := range imports {
+		switch {
+		case permitted(imp, []string{gogitModule}):
+			viaGoGit = true
+		case imp == netHTTP:
+			viaHTTP = true
+		case forbidden(imp):
+			t.Fatalf("%s imports %q; its only forbidden direct import is %q", remotePackage, imp, netHTTP)
+		}
+	}
+	if !viaGoGit || !viaHTTP {
+		t.Fatalf("%s Imports = %v, want it to include %q and a package under %q", remotePackage, imports, netHTTP, gogitModule)
+	}
 }
 
 func packageImports(t *testing.T, pkg string) []string {
