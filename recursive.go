@@ -19,11 +19,12 @@ type ProjectReport struct {
 // ScanRecursive scans the projects beneath fsys. A call that returns no error
 // returns at least one entry, so no empty result renders as a clean scan.
 func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
-	fsys = bound(context.Background(), fsys, s.maxFileSize)
 	emit := s.emitFunc()
+	budget := newReadBudget(s.maxReadBytes)
 	containerSink := newWarnSink(emit)
+	container := bound(context.Background(), fsys, s.maxFileSize, budget, containerSink)
 
-	roots, err := s.enumerate(fsys, containerSink)
+	roots, err := s.enumerate(container, containerSink)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +37,7 @@ func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
 
 	var out []ProjectReport
 	if enumerationBlinded || noProjectFound || containerIsProject {
-		rep, err := s.scanFS(fsys, containerSink, projectPass{})
+		rep, err := s.scanFS(container, containerSink, projectPass{})
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +51,8 @@ func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
 		if err != nil {
 			return nil, err
 		}
-		rep, err := s.scanFS(sub, newWarnSink(emit), projectPass{})
+		sink := newWarnSink(emit)
+		rep, err := s.scanFS(bound(context.Background(), sub, s.maxFileSize, budget, sink), sink, projectPass{})
 		if err != nil {
 			return nil, err
 		}
