@@ -582,11 +582,15 @@ func TestFetchFollowsARedirectOnlyWithinTheHost(t *testing.T) {
 	}
 }
 
-func TestFetchEndsASameHostRedirectLoop(t *testing.T) {
-	useFake(t, &fakeGit{redirect: map[string]string{"loop/r": "/loop/r"}})
+func TestFetchEndsASameHostRedirectLoopAfterTenRequests(t *testing.T) {
+	f := &fakeGit{redirect: map[string]string{"loop/r": "/loop/r"}}
+	useFake(t, f)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, _, err := Fetch(ctx, "https://github.com/loop/r", "", agentaudit.New(), DefaultLimits()); err == nil || errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Fetch() error = %v, want the loop refused before the deadline", err)
+	}
+	if n := len(f.requests()); n != 10 {
+		t.Fatalf("the loop reached the fake %d times, want 10", n)
 	}
 }

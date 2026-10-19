@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"math"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -343,6 +344,48 @@ func TestFetchRefusesMoreBlobsThanFiles(t *testing.T) {
 	}
 	if _, _, err := fetch("https://github.com/o/r", "", withLimits(func(l *Limits) { l.Files = len(blobs) - 1 })); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("Fetch() with Files one below the count: error = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestWantedStopsAtTheFirstBlobPastFilesAndWantsEachBlobOnce(t *testing.T) {
+	const asked = 1000
+	paths := make([]string, asked)
+	oids := map[string]plumbing.Hash{}
+	for i := range paths {
+		paths[i] = fmt.Sprintf("p%04d", i)
+		oids[paths[i]] = plumbing.ComputeHash(plumbing.BlobObject, []byte(paths[i]))
+	}
+	drawn := 0
+	counted := func(yield func(string) bool) {
+		for _, p := range paths {
+			drawn++
+			if !yield(p) {
+				return
+			}
+		}
+	}
+	fetcherWith := func(files int) *fetcher {
+		return &fetcher{l: Limits{Files: files}, oids: oids, fetched: map[plumbing.Hash]bool{}, withheld: map[plumbing.Hash]bool{}}
+	}
+
+	for files, wantDrawn := range map[int]int{asked: asked, 10: 11} {
+		drawn = 0
+		wants, err := fetcherWith(files).wanted(counted)
+		if files < asked && !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("wanted() with Files %d: error = %v, want ErrTooLarge", files, err)
+		}
+		if files == asked && (err != nil || len(wants) != asked) {
+			t.Fatalf("wanted() with Files %d = %d blobs, %v, want all %d", files, len(wants), err, asked)
+		}
+		if drawn != wantDrawn {
+			t.Fatalf("wanted() with Files %d drew %d asked paths, want %d", files, drawn, wantDrawn)
+		}
+	}
+
+	oids["alias"] = oids["p0001"]
+	wants, err := fetcherWith(asked).wanted(slices.Values([]string{"p0000", "p0000", "p0001", "alias"}))
+	if err != nil || len(wants) != 2 {
+		t.Fatalf("wanted() over a repeated path and an alias = %v, %v, want 2 blobs", wants, err)
 	}
 }
 

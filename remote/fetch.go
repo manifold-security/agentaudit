@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"net/http"
 	"path"
 	"regexp"
@@ -317,25 +318,35 @@ func (f *fetcher) rounds(s *agentaudit.Scanner, t *treefs.FS) error {
 		if err != nil {
 			return fmt.Errorf("remote: %w", err)
 		}
-		var wants []plumbing.Hash
-		for _, p := range asked {
-			h, ok := f.oids[p]
-			if !ok || f.fetched[h] || f.withheld[h] || slices.Contains(wants, h) {
-				continue
-			}
-			wants = append(wants, h)
+		wants, err := f.wanted(slices.Values(asked))
+		if err != nil {
+			return err
 		}
 		if len(wants) == 0 {
 			return nil
-		}
-		if len(f.fetched)+len(wants) > f.l.Files {
-			return fmt.Errorf("%w: more than %d blobs", ErrTooLarge, f.l.Files)
 		}
 		if err := f.store(wants, false); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (f *fetcher) wanted(asked iter.Seq[string]) ([]plumbing.Hash, error) {
+	var wants []plumbing.Hash
+	queued := map[plumbing.Hash]bool{}
+	for p := range asked {
+		h, ok := f.oids[p]
+		if !ok || f.fetched[h] || f.withheld[h] || queued[h] {
+			continue
+		}
+		if len(f.fetched)+len(wants) >= f.l.Files {
+			return nil, fmt.Errorf("%w: more than %d blobs", ErrTooLarge, f.l.Files)
+		}
+		queued[h] = true
+		wants = append(wants, h)
+	}
+	return wants, nil
 }
 
 // store asks again without the blobs over FileBytes. An oversized blob it
