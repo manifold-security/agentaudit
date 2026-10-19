@@ -1,6 +1,7 @@
 package agentaudit
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"slices"
@@ -18,6 +19,7 @@ type ProjectReport struct {
 // ScanRecursive scans the projects beneath fsys. A call that returns no error
 // returns at least one entry, so no empty result renders as a clean scan.
 func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
+	fsys = bound(context.Background(), fsys, s.maxFileSize)
 	emit := s.emitFunc()
 	containerSink := newWarnSink(emit)
 

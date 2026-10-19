@@ -1,6 +1,7 @@
 package agentaudit
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"strings"
@@ -13,7 +14,7 @@ import (
 // ScanGlobal returns a Report for fsys: it does not resolve a path or name a
 // home.
 func (s *Scanner) ScanGlobal(fsys fs.FS) (finding.Report, error) {
-	return s.scanFS(fsys, newWarnSink(s.emitFunc()), globalPass{})
+	return s.scanFS(bound(context.Background(), fsys, s.maxFileSize), newWarnSink(s.emitFunc()), globalPass{})
 }
 
 type globalPass struct{}
