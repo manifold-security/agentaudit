@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -38,6 +39,22 @@ func (stubAdapterAlt) Signatures() []adapter.Signature {
 func (stubAdapterAlt) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) { return nil, nil, nil }
 
 var _ adapter.Adapter = stubAdapterAlt{}
+
+type countingAdapter struct {
+	agent adapter.AgentID
+	calls *int
+}
+
+func (c countingAdapter) Agent() adapter.AgentID { return c.agent }
+
+func (c countingAdapter) Signatures() []adapter.Signature {
+	*c.calls++
+	return []adapter.Signature{{File: "SKILL.md", AnyDepth: true}}
+}
+
+func (countingAdapter) Parse(fs.FS) ([]ir.Entity, []adapter.Warning, error) { return nil, nil, nil }
+
+var _ adapter.Adapter = countingAdapter{}
 
 type failingFS struct {
 	m       fstest.MapFS
@@ -334,6 +351,29 @@ func TestDiscover_Determinism(t *testing.T) {
 	}
 	if got.Sources[2].Path != ".mcp.json" || got.Sources[2].Agent != adapter.AgentID("other-agent") {
 		t.Fatalf("Sources[2] = %+v, want {.mcp.json other-agent} (Agent tie-break)", got.Sources[2])
+	}
+}
+
+func TestDiscoverBuildsEachAdaptersSignaturesOncePerWalk(t *testing.T) {
+	fsys := fstest.MapFS{}
+	for i := range 64 {
+		fsys[fmt.Sprintf("pkg%d/SKILL.md", i)] = &fstest.MapFile{Data: []byte("x")}
+	}
+	var claudeCalls, otherCalls int
+	adapters := []adapter.Adapter{
+		countingAdapter{agent: adapter.AgentClaudeCode, calls: &claudeCalls},
+		countingAdapter{agent: adapter.AgentID("other-agent"), calls: &otherCalls},
+	}
+
+	got, _, err := Discover(fsys, adapters)
+	if err != nil {
+		t.Fatalf("Discover() error = %v, want nil", err)
+	}
+	if len(got.Sources) != 2*len(fsys) {
+		t.Fatalf("Discover() found %d Sources, want %d (every file matched by both adapters)", len(got.Sources), 2*len(fsys))
+	}
+	if claudeCalls != 1 || otherCalls != 1 {
+		t.Fatalf("Signatures() calls = %d and %d over %d files, want 1 per adapter per walk", claudeCalls, otherCalls, len(fsys))
 	}
 }
 

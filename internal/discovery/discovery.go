@@ -16,11 +16,15 @@ func Discover(fsys fs.FS, adapters []adapter.Adapter) (Result, []adapter.Warning
 	var roots []string
 	seenSrc := map[Source]struct{}{}
 	seenRoot := map[string]struct{}{}
-	manifestJoins := pluginManifestJoins(adapters)
+	sigs := make([][]adapter.Signature, len(adapters))
+	for i, a := range adapters {
+		sigs[i] = a.Signatures()
+	}
+	manifestJoins := pluginManifestJoins(sigs)
 
 	warnings, _, err := walkTree(fsys, func(p string, d fs.DirEntry) error {
-		for _, a := range adapters {
-			if adapter.MatchesEntry(p, d.IsDir(), a.Signatures()) {
+		for i, a := range adapters {
+			if adapter.MatchesEntry(p, d.IsDir(), sigs[i]) {
 				s := Source{Path: p, Agent: a.Agent()}
 				if _, dup := seenSrc[s]; !dup {
 					seenSrc[s] = struct{}{}
@@ -71,11 +75,11 @@ const pluginManifestFile = "plugin.json"
 // catalogues the plugin directories beside it, so its own directory is a
 // catalogue rather than a plugin. And an unanchored manifest name would root
 // every directory that happens to hold that file.
-func pluginManifestJoins(adapters []adapter.Adapter) []string {
+func pluginManifestJoins(sigs [][]adapter.Signature) []string {
 	var joins []string
 	seen := map[string]bool{}
-	for _, a := range adapters {
-		for _, s := range a.Signatures() {
+	for _, adapterSigs := range sigs {
+		for _, s := range adapterSigs {
 			if !s.AnyDepth || s.File != pluginManifestFile || s.Dir == "" {
 				continue
 			}
