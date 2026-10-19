@@ -60,6 +60,7 @@ type Scanner struct {
 	adapters    []adapter.Adapter
 	recursive   bool
 	maxFileSize int64
+	maxFindings int
 }
 
 // Option configures a Scanner built by New.
@@ -90,6 +91,12 @@ func WithRecursive() Option {
 // WithWarnFunc sets the callback invoked for each non-fatal warning.
 func WithWarnFunc(fn WarnFunc) Option {
 	return func(s *Scanner) { s.warn = fn }
+}
+
+// WithMaxFindings makes each Report a scan returns hold at most its first n
+// findings, counting the rest; n <= 0 sets no cap.
+func WithMaxFindings(n int) Option {
+	return func(s *Scanner) { s.maxFindings = n }
 }
 
 // withRulesFS is a test-only seam replacing the embedded default ruleset,
@@ -261,7 +268,7 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 		rulesByID[r.ID] = r
 	}
 
-	var findings []finding.Finding
+	findings := finding.NewReportBuilder(s.maxFindings)
 	var scanned []string
 	for _, a := range adapters {
 		if !p.activates(a, fsys, matched[a.Agent()]) {
@@ -289,11 +296,11 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 				warn(fmt.Errorf("agentaudit: rule %s produced unconvertible finding (empty message)", h.RuleID))
 				continue
 			}
-			findings = append(findings, f)
+			findings.Add(f)
 		}
 	}
 
-	return finding.NewReport(findings).
+	return findings.Report().
 		WithUnreadableSources(sink.unreadableSources()).
 		WithUnparsedSources(sink.unparsedSources()).
 		WithScannedAgents(scanned), nil
