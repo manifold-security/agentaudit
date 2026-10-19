@@ -6,6 +6,7 @@
 package agentaudit
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -52,12 +53,13 @@ type WarnFunc func(error)
 // One Scanner may run Scan and ScanRecursive concurrently, and its WarnFunc
 // may then be called concurrently.
 type Scanner struct {
-	agents    []adapter.AgentID
-	warn      WarnFunc
-	rulesFS   fs.FS
-	rulesDir  string
-	adapters  []adapter.Adapter
-	recursive bool
+	agents      []adapter.AgentID
+	warn        WarnFunc
+	rulesFS     fs.FS
+	rulesDir    string
+	adapters    []adapter.Adapter
+	recursive   bool
+	maxFileSize int64
 }
 
 // Option configures a Scanner built by New.
@@ -204,7 +206,7 @@ func (s *warnSink) unparsedSources() int {
 // UnparsedSources counts reflect the sources it could not read and those it
 // read but could not fully parse; both are also routed through WarnFunc.
 func (s *Scanner) Scan(fsys fs.FS) (finding.Report, error) {
-	return s.scanFS(fsys, newWarnSink(s.emitFunc()), projectPass{})
+	return s.ScanContext(context.Background(), fsys)
 }
 
 func (s *Scanner) emitFunc() func(error) {
