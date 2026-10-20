@@ -15,9 +15,21 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/packfile"
 )
 
+// dropReader can let go of its pack: go-git pools the decompressors that
+// read a pack, and a pooled one keeps its source alive through a
+// collection. Seek keeps go-git's parser from holding each delta's content.
+type dropReader struct{ r *bytes.Reader }
+
+func (d *dropReader) Read(p []byte) (int, error) { return d.r.Read(p) }
+
+func (d *dropReader) Seek(off int64, whence int) (int64, error) { return d.r.Seek(off, whence) }
+
+func (d *dropReader) drop() { d.r = bytes.NewReader(nil) }
+
 type cappedTransport struct {
 	base       http.RoundTripper
 	refs, pack int64
+	advertised string
 }
 
 var (
@@ -33,6 +45,9 @@ func (c *cappedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	body := &cappedBody{ReadCloser: resp.Body, left: c.pack, err: errPackTooLarge}
 	if strings.HasSuffix(req.URL.Path, "/info/refs") {
 		body.left, body.err = c.refs, errRefsTooLarge
+		ep := *req.URL
+		ep.Path = strings.TrimSuffix(ep.Path, "/info/refs")
+		c.advertised = ep.Scheme + "://" + ep.Host + ep.EscapedPath()
 	}
 	resp.Body = body
 	return resp, nil
@@ -62,7 +77,9 @@ func (b *cappedBody) Read(p []byte) (int, error) {
 }
 
 func prescan(ctx context.Context, pack []byte, l Limits, total int64) (int64, []plumbing.Hash, error) {
-	s := packfile.NewScanner(bytes.NewReader(pack))
+	rd := &dropReader{bytes.NewReader(pack)}
+	defer rd.drop()
+	s := packfile.NewScanner(rd)
 	_, count, err := s.Header()
 	if err != nil {
 		return 0, nil, err

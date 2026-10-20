@@ -349,23 +349,21 @@ func TestFetchRefusesMoreBlobsThanFiles(t *testing.T) {
 
 func TestWantedStopsAtTheFirstBlobPastFilesAndWantsEachBlobOnce(t *testing.T) {
 	const asked = 1000
-	paths := make([]string, asked)
-	oids := map[string]plumbing.Hash{}
-	for i := range paths {
-		paths[i] = fmt.Sprintf("p%04d", i)
-		oids[paths[i]] = plumbing.ComputeHash(plumbing.BlobObject, []byte(paths[i]))
+	hashes := make([]plumbing.Hash, asked)
+	for i := range hashes {
+		hashes[i] = plumbing.ComputeHash(plumbing.BlobObject, []byte(fmt.Sprintf("p%04d", i)))
 	}
 	drawn := 0
-	counted := func(yield func(string) bool) {
-		for _, p := range paths {
+	counted := func(yield func(plumbing.Hash) bool) {
+		for _, h := range hashes {
 			drawn++
-			if !yield(p) {
+			if !yield(h) {
 				return
 			}
 		}
 	}
 	fetcherWith := func(files int) *fetcher {
-		return &fetcher{l: Limits{Files: files}, oids: oids, fetched: map[plumbing.Hash]bool{}, withheld: map[plumbing.Hash]bool{}}
+		return &fetcher{l: Limits{Files: files}, fetched: map[plumbing.Hash]bool{}, withheld: map[plumbing.Hash]bool{}}
 	}
 
 	for files, wantDrawn := range map[int]int{asked: asked, 10: 11} {
@@ -378,14 +376,13 @@ func TestWantedStopsAtTheFirstBlobPastFilesAndWantsEachBlobOnce(t *testing.T) {
 			t.Fatalf("wanted() with Files %d = %d blobs, %v, want all %d", files, len(wants), err, asked)
 		}
 		if drawn != wantDrawn {
-			t.Fatalf("wanted() with Files %d drew %d asked paths, want %d", files, drawn, wantDrawn)
+			t.Fatalf("wanted() with Files %d drew %d missed blobs, want %d", files, drawn, wantDrawn)
 		}
 	}
 
-	oids["alias"] = oids["p0001"]
-	wants, err := fetcherWith(asked).wanted(slices.Values([]string{"p0000", "p0000", "p0001", "alias"}))
+	wants, err := fetcherWith(asked).wanted(slices.Values([]plumbing.Hash{hashes[0], hashes[0], hashes[1], hashes[1]}))
 	if err != nil || len(wants) != 2 {
-		t.Fatalf("wanted() over a repeated path and an alias = %v, %v, want 2 blobs", wants, err)
+		t.Fatalf("wanted() over two blobs each missed twice = %v, %v, want 2 blobs", wants, err)
 	}
 }
 
@@ -415,9 +412,10 @@ func TestFetchCountsEveryDirectoryTowardTreeEntries(t *testing.T) {
 	}
 }
 
-// Every path the walk lists, directories included, counts toward PathBytes,
-// and the walk stops at the path that passes it before reading the tree that
-// path names: the second repository's pack leaves that tree out.
+// Every path the listing names, directories included, counts toward
+// PathBytes, and the listing stops at the path that passes it before it
+// reads the tree that path names: the second repository's pack leaves that
+// tree out.
 func TestFetchRefusesPathsPastPathBytesBeforeReadingBelowThem(t *testing.T) {
 	repo, _ := nestedRepo(t, []string{"aaaa", "bbbb"}, "f")
 	cut, under := nestedRepo(t, []string{"aaaa", "bbbb"}, "f")
