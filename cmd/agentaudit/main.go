@@ -1,5 +1,4 @@
-// Command agentaudit is the CLI frontend: no other package's non-test code
-// takes os or Cobra, so the engine and the reporters stay fs.FS-bound.
+// Command agentaudit is the CLI frontend.
 package main
 
 import (
@@ -48,7 +47,7 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 	fileSize, readBytes := byteCount(formatBytes(limits.DefaultFileSize)), byteCount(formatBytes(limits.DefaultReadBytes))
 	entities := limits.DefaultEntities
 	cmd := &cobra.Command{
-		Use:           "agentaudit [PATH]",
+		Use:           "agentaudit [PATH | URL]",
 		Short:         "Scan an AI agent's configuration for capabilities",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -134,10 +133,11 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 
 			var blocks []block
 			for _, target := range targets {
-				tb, err := targetBlocks(target, recursive, warn, limitOpts...)
+				tb, withheld, err := targetBlocks(target, recursive, warn, limitOpts...)
 				if err != nil {
 					return err
 				}
+				limited = limited || withheld
 				blocks = append(blocks, tb...)
 			}
 
@@ -215,8 +215,9 @@ type block struct {
 	Report finding.Report
 }
 
-// run translates the outcome into an exit code: 0 clean, 1 findings present
-// or a file a limit refused, 2 usage or runtime error.
+// run translates the outcome into an exit code: 0 clean, 1 findings present,
+// a file a limit refused or a file a URL fetch withheld, 2 usage or runtime
+// error.
 func run(args []string, stdout, stderr io.Writer) int {
 	var code int
 	cmd := newRootCmd(stdout, stderr, &code)
