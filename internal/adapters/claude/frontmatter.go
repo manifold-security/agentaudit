@@ -61,28 +61,46 @@ func decodeFrontmatter(block []byte, out any, room int) error {
 
 const maxAliasedNodes = 1 << 20
 
-func aliasedNodes(n *yaml.Node, limit int) int {
-	return countAliased(n, false, 0, limit, map[*yaml.Node]bool{})
-}
-
-func countAliased(n *yaml.Node, aliased bool, count, limit int, expanding map[*yaml.Node]bool) int {
-	if count > limit {
-		return count
+// aliasedNodes walks on its own stack rather than recursing: chained aliases
+// nest past the depth yaml.v3 parses to, and
+// TestAliasedNodesWalksAChainedAliasWithinAOneMiBStack pins the walk.
+func aliasedNodes(root *yaml.Node, limit int) int {
+	type frame struct {
+		n       *yaml.Node
+		next    int
+		aliased bool
 	}
-	if aliased {
-		count++
-	}
-	if n.Kind == yaml.AliasNode && n.Alias != nil {
-		if expanding[n.Alias] {
-			return count
+	count := 0
+	expanding := map[*yaml.Node]bool{}
+	var stack []frame
+	enter := func(n *yaml.Node, aliased bool) {
+		if aliased {
+			count++
 		}
-		expanding[n.Alias] = true
-		count = countAliased(n.Alias, true, count, limit, expanding)
-		delete(expanding, n.Alias)
-		return count
+		if n.Kind == yaml.AliasNode && n.Alias != nil {
+			if expanding[n.Alias] {
+				return
+			}
+			expanding[n.Alias] = true
+		}
+		stack = append(stack, frame{n: n, aliased: aliased})
 	}
-	for _, c := range n.Content {
-		count = countAliased(c, aliased, count, limit, expanding)
+	for enter(root, false); len(stack) > 0 && count <= limit; {
+		f := &stack[len(stack)-1]
+		switch {
+		case f.n.Kind == yaml.AliasNode && f.n.Alias != nil:
+			if f.next == 0 {
+				f.next = 1
+				enter(f.n.Alias, true)
+				continue
+			}
+			delete(expanding, f.n.Alias)
+		case f.next < len(f.n.Content):
+			f.next++
+			enter(f.n.Content[f.next-1], f.aliased)
+			continue
+		}
+		stack = stack[:len(stack)-1]
 	}
 	return count
 }
