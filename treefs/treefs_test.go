@@ -116,7 +116,12 @@ func shapeTree(t *testing.T) *treefs.FS {
 func treeShape(t *testing.T, entries []treefs.Entry) string {
 	t.Helper()
 
-	tree := shapeTreeOf(t, entries)
+	return shapeOf(t, shapeTreeOf(t, entries))
+}
+
+func shapeOf(t *testing.T, tree *treefs.FS) string {
+	t.Helper()
+
 	var b strings.Builder
 	err := fs.WalkDir(tree, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
