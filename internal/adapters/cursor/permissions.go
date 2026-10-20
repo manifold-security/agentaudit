@@ -10,6 +10,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -69,6 +70,7 @@ func permissionEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 		entities = append(entities, blockEntities...)
 		warnings = append(warnings, blockWarnings...)
 	}
+	entities, warnings = limits.Of(fsys).Admit(permissionsFileName, entities, warnings)
 	return entities, warnings
 }
 

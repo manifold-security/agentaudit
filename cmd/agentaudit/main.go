@@ -3,15 +3,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/manifold-security/agentaudit"
 	"github.com/manifold-security/agentaudit/finding"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/registry"
 	"github.com/manifold-security/agentaudit/internal/report"
 	jsonreport "github.com/manifold-security/agentaudit/internal/report/json"
@@ -20,19 +23,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var scan = func(fsys fs.FS, warn func(error)) (finding.Report, error) {
-	sc := agentaudit.New(agentaudit.WithWarnFunc(warn))
-	return sc.Scan(fsys)
+var scan = func(fsys fs.FS, warn func(error), opts ...agentaudit.Option) (finding.Report, error) {
+	return newScanner(warn, opts).Scan(fsys)
 }
 
-var scanRecursive = func(fsys fs.FS, warn func(error)) ([]agentaudit.ProjectReport, error) {
-	sc := agentaudit.New(agentaudit.WithWarnFunc(warn))
-	return sc.ScanRecursive(fsys)
+var scanRecursive = func(fsys fs.FS, warn func(error), opts ...agentaudit.Option) ([]agentaudit.ProjectReport, error) {
+	return newScanner(warn, opts).ScanRecursive(fsys)
 }
 
-var scanGlobal = func(fsys fs.FS, warn func(error)) (finding.Report, error) {
-	sc := agentaudit.New(agentaudit.WithWarnFunc(warn))
-	return sc.ScanGlobal(fsys)
+var scanGlobal = func(fsys fs.FS, warn func(error), opts ...agentaudit.Option) (finding.Report, error) {
+	return newScanner(warn, opts).ScanGlobal(fsys)
+}
+
+func newScanner(warn func(error), opts []agentaudit.Option) *agentaudit.Scanner {
+	return agentaudit.New(append([]agentaudit.Option{agentaudit.WithWarnFunc(warn)}, opts...)...)
 }
 
 func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
@@ -40,6 +44,9 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 	// stringArrayValue.String() renders []string{""} as "[]", which its own
 	// parser reads back as zero elements, silently dropping --scan-dir "".
 	var scanDirs []string
+
+	fileSize, readBytes := byteCount(formatBytes(limits.DefaultFileSize)), byteCount(formatBytes(limits.DefaultReadBytes))
+	entities := limits.DefaultEntities
 	cmd := &cobra.Command{
 		Use:           "agentaudit [PATH]",
 		Short:         "Scan an AI agent's configuration for capabilities",
@@ -70,6 +77,27 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 			if outputFile != "" && outputFile != "json" && outputFile != "md" && outputFile != "all" {
 				return fmt.Errorf("agentaudit: %q is not a valid -O value (want \"json\", \"md\", or \"all\")", outputFile)
 			}
+			maxFileSize, err := byteLimit("--max-file-size", fileSize)
+			if err != nil {
+				return err
+			}
+			maxReadBytes, err := byteLimit("--max-read-bytes", readBytes)
+			if err != nil {
+				return err
+			}
+			if entities < 0 {
+				return fmt.Errorf("agentaudit: %q is not a valid --max-entities value (want 0 or more; 0 turns the limit off)", strconv.Itoa(entities))
+			}
+			limitOpts := []agentaudit.Option{
+				agentaudit.WithMaxFileSize(maxFileSize),
+				agentaudit.WithMaxReadBytes(maxReadBytes),
+				agentaudit.WithMaxEntities(entities),
+			}
+			limitFlags := []limitFlag{
+				{name: "--max-file-size", err: limits.ErrFileSize},
+				{name: "--max-read-bytes", err: limits.ErrReadBudget},
+				{name: "--max-entities", err: limits.ErrEntities},
+			}
 			explain, err := cmd.Flags().GetBool("explain")
 			if err != nil {
 				return err
@@ -95,13 +123,18 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 				}
 			}
 
+			limited := false
 			warn := func(warnErr error) {
+				limited = limited || errors.Is(warnErr, limits.ErrLimit)
+				for i := range limitFlags {
+					limitFlags[i].fired = limitFlags[i].fired || errors.Is(warnErr, limitFlags[i].err)
+				}
 				fmt.Fprintln(stderr, "warning:", report.Escape(warnErr.Error()))
 			}
 
 			var blocks []block
 			for _, target := range targets {
-				tb, err := targetBlocks(target, recursive, warn)
+				tb, err := targetBlocks(target, recursive, warn, limitOpts...)
 				if err != nil {
 					return err
 				}
@@ -110,7 +143,7 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 
 			var emptyLine string
 			if globalConfig {
-				gb, unreadable, err := globalBlocks(registry.Adapters(), warn)
+				gb, unreadable, err := globalBlocks(registry.Adapters(), warn, limitOpts...)
 				if err != nil {
 					return err
 				}
@@ -118,6 +151,10 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 				if len(blocks) == 0 {
 					emptyLine = emptyGlobalLine(unreadable)
 				}
+			}
+
+			if hint := limitHint(limitFlags); hint != "" {
+				fmt.Fprintln(stderr, hint)
 			}
 
 			if format == "json" {
@@ -152,7 +189,7 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 					hasFindings = true
 				}
 			}
-			if hasFindings {
+			if hasFindings || limited {
 				*code = 1
 			} else {
 				*code = 0
@@ -167,6 +204,9 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 	cmd.Flags().StringArrayVar(&scanDirs, "scan-dir", nil, "additional target directory to scan, unioned with PATH (repeatable)")
 	cmd.Flags().BoolP("recursive", "r", false, "scan every project beneath each target, one block per project")
 	cmd.Flags().Bool("global-config", false, "scan only each adapter's user-level config; cannot be combined with PATH, --scan-dir or -r")
+	cmd.Flags().Var(&fileSize, "max-file-size", "refuse a file larger than this, in bytes or with a KiB, MiB or GiB suffix; raise it when a legitimate file is refused, such as a large ~/.claude.json under --global-config; 0 turns it off")
+	cmd.Flags().Var(&readBytes, "max-read-bytes", "refuse reads past this total in one scan, in bytes or with a KiB, MiB or GiB suffix; raise it when a large tree's files are refused; 0 turns it off")
+	cmd.Flags().IntVar(&entities, "max-entities", entities, "refuse a file that takes one agent's parse past this many items; raise it when a legitimate file is refused; 0 turns it off")
 	return cmd
 }
 
@@ -175,8 +215,8 @@ type block struct {
 	Report finding.Report
 }
 
-// run translates the outcome into an exit code: 0 clean, 1 findings present,
-// 2 usage or runtime error.
+// run translates the outcome into an exit code: 0 clean, 1 findings present
+// or a file a limit refused, 2 usage or runtime error.
 func run(args []string, stdout, stderr io.Writer) int {
 	var code int
 	cmd := newRootCmd(stdout, stderr, &code)

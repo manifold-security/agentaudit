@@ -18,21 +18,27 @@ import (
 func withScan(t *testing.T, fn func(fsys fs.FS, warn func(error)) (finding.Report, error)) {
 	t.Helper()
 	original := scan
-	scan = fn
+	scan = func(fsys fs.FS, warn func(error), _ ...agentaudit.Option) (finding.Report, error) {
+		return fn(fsys, warn)
+	}
 	t.Cleanup(func() { scan = original })
 }
 
 func withScanRecursive(t *testing.T, fn func(fsys fs.FS, warn func(error)) ([]agentaudit.ProjectReport, error)) {
 	t.Helper()
 	original := scanRecursive
-	scanRecursive = fn
+	scanRecursive = func(fsys fs.FS, warn func(error), _ ...agentaudit.Option) ([]agentaudit.ProjectReport, error) {
+		return fn(fsys, warn)
+	}
 	t.Cleanup(func() { scanRecursive = original })
 }
 
 func withScanGlobal(t *testing.T, fn func(fsys fs.FS, warn func(error)) (finding.Report, error)) {
 	t.Helper()
 	original := scanGlobal
-	scanGlobal = fn
+	scanGlobal = func(fsys fs.FS, warn func(error), _ ...agentaudit.Option) (finding.Report, error) {
+		return fn(fsys, warn)
+	}
 	t.Cleanup(func() { scanGlobal = original })
 }
 

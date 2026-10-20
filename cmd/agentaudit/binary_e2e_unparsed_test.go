@@ -47,7 +47,7 @@ func TestBinaryE2E_UnparsableAgentIsCountedInJSON(t *testing.T) {
 
 	stdout, stderr, code := runBinary(t, bin, root, "-o", "json")
 	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (a degraded scan with no findings is not an escalation)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		t.Fatalf("exit code = %d, want 0 (an unparsable agent with no findings is not an escalation)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
 	var docs []countsDocument
@@ -70,8 +70,7 @@ func TestBinaryE2E_UnparsableAgentIsCountedInJSON(t *testing.T) {
 }
 
 // The same tree on the pretty surface: the run must not read as clean, and
-// its exit code must stay 0 — "I could not parse this" is information, not
-// the claim that something was found.
+// an unparsable agent no limit refused leaves the exit code at 0.
 func TestBinaryE2E_UnparsableAgentDegradesPrettyWithoutChangingExitCode(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 
@@ -104,7 +103,7 @@ func TestBinaryE2E_UnparsableAgentDegradesPrettyWithoutChangingExitCode(t *testi
 
 		stdout, stderr, code := runBinary(t, bin, root)
 		if code != 1 {
-			t.Fatalf("exit code = %d, want 1 (findings decide the code, degradation never does)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+			t.Fatalf("exit code = %d, want 1 (the finding sets the code, the unparsable agent does not)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
 		if !strings.Contains(stdout, "· 1 unparsed source\n") {
 			t.Fatalf("stdout missing the unparsed footer suffix\nstdout:\n%s", stdout)

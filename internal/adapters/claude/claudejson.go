@@ -10,6 +10,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -52,7 +53,8 @@ func (Adapter) ParseGlobal(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	var entities []ir.Entity
 	var warnings []adapter.Warning
 
-	servers, serverWarnings := mcpjson.ServersFromRaw(doc.MCPServers, claudeJSONFileName, "mcpServers")
+	budget := limits.Of(fsys)
+	servers, serverWarnings := mcpjson.ServersFromRaw(doc.MCPServers, claudeJSONFileName, "mcpServers", budget)
 	warnings = append(warnings, serverWarnings...)
 	mcpEnts, mcpWarnings := entitiesFromMCPMap(servers, claudeJSONFileName, "mcpServers")
 	entities = append(entities, mcpEnts...)
@@ -65,15 +67,16 @@ func (Adapter) ParseGlobal(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	sort.Strings(projectKeys)
 
 	for _, p := range projectKeys {
-		projEntities, projWarnings := projectEntities(doc.Projects[p], p)
+		projEntities, projWarnings := projectEntities(doc.Projects[p], p, budget)
 		entities = append(entities, projEntities...)
 		warnings = append(warnings, projWarnings...)
 	}
 
+	entities, warnings = budget.Admit(claudeJSONFileName, entities, warnings)
 	return entities, warnings, nil
 }
 
-func projectEntities(raw json.RawMessage, p string) ([]ir.Entity, []adapter.Warning) {
+func projectEntities(raw json.RawMessage, p string, budget *limits.Entities) ([]ir.Entity, []adapter.Warning) {
 	var proj claudeJSONProject
 	if err := json.Unmarshal(raw, &proj); err != nil {
 		return nil, []adapter.Warning{{File: claudeJSONFileName, Err: fmt.Errorf("projects.%s: %w", p, err)}}
@@ -83,7 +86,7 @@ func projectEntities(raw json.RawMessage, p string) ([]ir.Entity, []adapter.Warn
 	var warnings []adapter.Warning
 
 	mcpKey := "projects." + p + ".mcpServers"
-	servers, serverWarnings := mcpjson.ServersFromRaw(proj.MCPServers, claudeJSONFileName, mcpKey)
+	servers, serverWarnings := mcpjson.ServersFromRaw(proj.MCPServers, claudeJSONFileName, mcpKey, budget)
 	warnings = append(warnings, serverWarnings...)
 	mcpEnts, mcpWarnings := entitiesFromMCPMap(servers, claudeJSONFileName, mcpKey)
 	entities = append(entities, mcpEnts...)

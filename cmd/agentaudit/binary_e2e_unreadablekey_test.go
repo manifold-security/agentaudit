@@ -10,7 +10,7 @@ import (
 
 // unreadableHookCommandAgent declares a hook whose command is a list where
 // the schema wants a string. The group survives with a blank command (see
-// hooksFromNode), so the file's declaration is lost with nothing left to
+// hookGroupsFromNode), so the file's declaration is lost with nothing left to
 // report.
 const unreadableHookCommandAgent = "---\n" +
 	"name: r\n" +
@@ -77,7 +77,7 @@ func TestBinaryE2E_UnreadableFrontmatterKeyDegradesInsteadOfReadingClean(t *test
 
 	stdout, stderr, code := runBinary(t, bin, root)
 	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (degradation never changes the exit code)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		t.Fatalf("exit code = %d, want 0 (an undecodable key leaves the exit code alone)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if claimsACleanScan(stdout) {
 		t.Errorf("stdout must NOT read as a clean empty scan\nstdout:\n%s", stdout)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -70,6 +71,7 @@ func hookEntities(fsys fs.FS, file string) ([]ir.Entity, []adapter.Warning, erro
 		entities = append(entities, eventEntities...)
 		warnings = append(warnings, eventWarnings...)
 	}
+	entities, warnings = limits.Of(fsys).Admit(file, entities, warnings)
 	return entities, warnings, nil
 }
 

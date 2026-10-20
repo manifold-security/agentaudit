@@ -5,6 +5,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 // cliGlobalFileName is the CLI configuration Cursor keeps under a home
@@ -20,5 +21,6 @@ func (Adapter) ParseGlobal(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	}
 
 	entities, permissionWarnings := entitiesFromPermissions(cliGlobalFileName, doc[permissionsKey])
+	entities, permissionWarnings = limits.Of(fsys).Admit(cliGlobalFileName, entities, permissionWarnings)
 	return entities, permissionWarnings, nil
 }

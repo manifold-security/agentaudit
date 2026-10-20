@@ -11,6 +11,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 // ServersFromFile reads a document whose top level carries an mcpServers
@@ -44,18 +45,20 @@ func ServersFromFile(fsys fs.FS, file, key string) (map[string]Entry, []adapter.
 		return nil, []adapter.Warning{{File: file, Err: err}}, nil
 	}
 
-	servers, warnings := ServersFromRaw(doc[key], file, key)
+	servers, warnings := ServersFromRaw(doc[key], file, key, limits.Of(fsys))
 	return servers, warnings, nil
 }
 
 // EntitiesFromFile reads a document whose top level carries an mcpServers
-// object under key, and returns the servers it declares.
+// object under key, and returns the servers it declares that fsys's entity
+// budget admits.
 func EntitiesFromFile(fsys fs.FS, file, key string, resolve Resolver) ([]ir.Entity, []adapter.Warning, error) {
 	servers, warnings, err := ServersFromFile(fsys, file, key)
-	if err != nil {
+	if err != nil || servers == nil {
 		return nil, warnings, err
 	}
-	return Entities(servers, file, key, resolve), warnings, nil
+	entities, warnings := limits.Of(fsys).Admit(file, Entities(servers, file, key, resolve), warnings)
+	return entities, warnings, nil
 }
 
 // Entry is one entry within an mcpServers object. "transport" is Claude's
@@ -128,8 +131,9 @@ func FormOf(raw json.RawMessage) Form {
 // ServersFromRaw decodes a server map per entry so one malformed entry cannot
 // blank every sibling, iterating entry names in sorted order because Go map
 // iteration is randomized. key prefixes each entry warning, or is "" when raw
-// IS the document.
-func ServersFromRaw(raw json.RawMessage, file, key string) (map[string]Entry, []adapter.Warning) {
+// IS the document. Reading stops, and file is refused whole, at the first
+// entry budget has no room for.
+func ServersFromRaw(raw json.RawMessage, file, key string, budget *limits.Entities) (map[string]Entry, []adapter.Warning) {
 	switch f := FormOf(raw); f {
 	case FormAbsent:
 		return nil, nil
@@ -143,9 +147,12 @@ func ServersFromRaw(raw json.RawMessage, file, key string) (map[string]Entry, []
 		return nil, []adapter.Warning{{File: file, Err: errors.New(msg)}}
 	}
 
-	var rawEntries map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &rawEntries); err != nil {
+	rawEntries, over, err := rawServers(raw, budget.Room())
+	if err != nil {
 		return nil, []adapter.Warning{{File: file, Err: err}}
+	}
+	if over {
+		return nil, []adapter.Warning{budget.Refuse(file)}
 	}
 
 	names := make([]string, 0, len(rawEntries))
@@ -170,6 +177,30 @@ func ServersFromRaw(raw json.RawMessage, file, key string) (map[string]Entry, []
 		servers[name] = entry
 	}
 	return servers, warnings
+}
+
+func rawServers(raw json.RawMessage, room int) (entries map[string]json.RawMessage, over bool, err error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if _, err := dec.Token(); err != nil {
+		return nil, false, err
+	}
+	entries = map[string]json.RawMessage{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, false, err
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, false, err
+		}
+		name, _ := tok.(string)
+		entries[name] = value
+		if len(entries) > room {
+			return nil, true, nil
+		}
+	}
+	return entries, false, nil
 }
 
 // Entities converts a decoded mcpServers object into located ir.MCPServer

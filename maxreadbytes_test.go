@@ -263,18 +263,55 @@ func TestWithMaxReadBytesHoldsBesideWithMaxFileSize(t *testing.T) {
 	}
 }
 
+const defaultMaxReadBytes = 64 << 20
+
+func agentFiles(n, size int) fstest.MapFS {
+	data := []byte(strings.Repeat(" ", size))
+	fsys := fstest.MapFS{}
+	for i := range n {
+		fsys[fmt.Sprintf(".claude/agents/a%03d.md", i)] = &fstest.MapFile{Data: data}
+	}
+	return fsys
+}
+
+func TestNewBudgetsEachScanAt64MiB(t *testing.T) {
+	const extra = ".claude/agents/z.md"
+	full := agentFiles(defaultMaxReadBytes/defaultMaxFileSize, defaultMaxFileSize)
+	over := agentFiles(defaultMaxReadBytes/defaultMaxFileSize, defaultMaxFileSize)
+	over[extra] = &fstest.MapFile{Data: []byte(" ")}
+	refusal := "agentaudit: read budget: " + extra + ": read " + extra + ": past the scan's 64 MiB read budget; not scanned"
+
+	for _, tc := range []struct {
+		name     string
+		tree     fstest.MapFS
+		warnings []string
+	}{
+		{"at the budget", full, nil},
+		{"past the budget", over, []string{refusal}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var warnings []string
+			s := agentaudit.New(agentaudit.WithWarnFunc(func(w error) { warnings = append(warnings, w.Error()) }))
+
+			rep, err := s.Scan(tc.tree)
+			if err != nil {
+				t.Fatalf("Scan() error = %v, want nil", err)
+			}
+			if got := rep.UnreadableSources(); got != len(tc.warnings) {
+				t.Errorf("UnreadableSources() = %d, want %d", got, len(tc.warnings))
+			}
+			if !slices.Equal(warnings, tc.warnings) {
+				t.Errorf("warnings = %q, want %q", warnings, tc.warnings)
+			}
+		})
+	}
+}
+
 func TestWithMaxReadBytesAtZeroBelowOrTheInt64MaxScansAsUncapped(t *testing.T) {
-	fsys := fstest.MapFS{
-		settingsFile:   &fstest.MapFile{Data: []byte(validStubSettings)},
-		sniffedPayload: &fstest.MapFile{Data: []byte("#!/bin/sh\n")},
-	}
-	want, err := agentaudit.New().Scan(fsys)
-	if err != nil {
-		t.Fatalf("uncapped Scan() error = %v", err)
-	}
-	if len(want.Findings()) == 0 {
-		t.Fatal("uncapped Scan() found nothing")
-	}
+	fsys := agentFiles(defaultMaxReadBytes/defaultMaxFileSize+1, defaultMaxFileSize)
+	fsys[settingsFile] = &fstest.MapFile{Data: []byte(validStubSettings)}
+	fsys[sniffedPayload] = &fstest.MapFile{Data: []byte("#!/bin/sh\n")}
+	want := []string{"claude.hook.command@" + settingsFile, "claude.payload.bundled-script@" + sniffedPayload}
 
 	live, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -291,8 +328,8 @@ func TestWithMaxReadBytesAtZeroBelowOrTheInt64MaxScansAsUncapped(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ScanContext() error = %v, want nil", err)
 				}
-				if !reflect.DeepEqual(got, want) {
-					t.Errorf("ScanContext() = %+v, want the uncapped %+v", got, want)
+				if findings := findingsByFile(got); !slices.Equal(findings, want) || got.UnreadableSources() != 0 {
+					t.Errorf("findings = %q, UnreadableSources() = %d, want %q read whole", findings, got.UnreadableSources(), want)
 				}
 			})
 		}

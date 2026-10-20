@@ -7,6 +7,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -25,7 +26,8 @@ func mcpEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 		return nil, warnings, err
 	}
 	entities, entityWarnings := entitiesFromMCPMap(servers, mcpFileName, "mcpServers")
-	return entities, append(warnings, entityWarnings...), nil
+	entities, warnings = limits.Of(fsys).Admit(mcpFileName, entities, append(warnings, entityWarnings...))
+	return entities, warnings, nil
 }
 
 // entitiesFromMCPMap binds Claude's own transportOf, so a Claude surface

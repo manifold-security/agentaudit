@@ -293,7 +293,10 @@ type blockingOpenFS struct {
 const blockingOpenSentinel = "open would block forever"
 
 func (f blockingOpenFS) Open(name string) (fs.File, error) {
-	return nil, &fs.PathError{Op: "open", Path: name, Err: errors.New(blockingOpenSentinel)}
+	if file := f.m[name]; file != nil && file.Mode&(fs.ModeNamedPipe|fs.ModeSymlink) != 0 {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: errors.New(blockingOpenSentinel)}
+	}
+	return f.m.Open(name)
 }
 
 func (f blockingOpenFS) Stat(name string) (fs.FileInfo, error)      { return f.m.Stat(name) }

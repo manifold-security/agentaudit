@@ -169,7 +169,8 @@ func TestBinaryE2E_MultiTarget_FindingsOnlyInSecondTargetExits1(t *testing.T) {
 	}
 }
 
-// degradation never moves the exit code, even beside a clean target.
+// A permission fault with no finding leaves the exit code at 0, even beside a
+// clean target.
 func TestBinaryE2E_MultiTarget_DegradedPlusCleanNoFindingsExits0(t *testing.T) {
 	skipUnlessPermissionBitsEnforced(t)
 	bin := buildAgentauditBinary(t)

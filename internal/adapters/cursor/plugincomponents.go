@@ -12,6 +12,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -172,16 +173,19 @@ func pluginMCPEntities(fsys fs.FS, layout pluginLayout) ([]ir.Entity, []adapter.
 		raw = doc[mcpServersKey]
 	}
 
-	servers, serverWarnings := mcpjson.ServersFromRaw(raw, file, mcpServersKey)
+	budget := limits.Of(fsys)
+	servers, serverWarnings := mcpjson.ServersFromRaw(raw, file, mcpServersKey, budget)
 	for name, entry := range servers {
 		servers[name] = expandEntry(entry, layout.root)
 	}
-	return mcpjson.Entities(servers, file, mcpServersKey, transportOf), serverWarnings
+	entities, serverWarnings := budget.Admit(file, mcpjson.Entities(servers, file, mcpServersKey, transportOf), serverWarnings)
+	return entities, serverWarnings
 }
 
 func pluginHookEntities(fsys fs.FS, layout pluginLayout) ([]ir.Entity, []adapter.Warning, error) {
 	if layout.hooks.inline != nil {
 		entities, warnings := inlineHookEntities(layout.manifestFile, layout.hooks.inline)
+		entities, warnings = limits.Of(fsys).Admit(layout.manifestFile, entities, warnings)
 		return entities, warnings, nil
 	}
 	if layout.hooks.path == "" {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -33,6 +34,7 @@ func cliEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	}
 
 	entities, permissionWarnings := entitiesFromPermissions(cliFileName, doc[permissionsKey])
+	entities, permissionWarnings = limits.Of(fsys).Admit(cliFileName, entities, permissionWarnings)
 	return entities, permissionWarnings, nil
 }
 

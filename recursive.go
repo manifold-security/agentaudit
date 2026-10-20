@@ -22,7 +22,7 @@ func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
 	emit := s.emitFunc()
 	budget := newReadBudget(s.maxReadBytes)
 	containerSink := newWarnSink(emit)
-	container := bound(context.Background(), fsys, s.maxFileSize, budget, containerSink)
+	container := bound(context.Background(), fsys, s.maxFileSize, budget, nil, containerSink)
 
 	roots, err := s.enumerate(container, containerSink)
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *Scanner) ScanRecursive(fsys fs.FS) ([]ProjectReport, error) {
 			return nil, err
 		}
 		sink := newWarnSink(emit)
-		rep, err := s.scanFS(bound(context.Background(), sub, s.maxFileSize, budget, sink), sink, projectPass{})
+		rep, err := s.scanFS(bound(context.Background(), sub, s.maxFileSize, budget, nil, sink), sink, projectPass{})
 		if err != nil {
 			return nil, err
 		}

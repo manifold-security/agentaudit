@@ -9,27 +9,35 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/finding"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 var (
-	_ fs.ReadDirFS  = boundFS{}
-	_ fs.ReadFileFS = boundFS{}
-	_ fs.StatFS     = boundStatFS{}
-	_ fs.ReadLinkFS = boundLinkFS{}
-	_ fs.StatFS     = boundStatLinkFS{}
-	_ fs.ReadLinkFS = boundStatLinkFS{}
+	_ fs.ReadDirFS   = boundFS{}
+	_ fs.ReadFileFS  = boundFS{}
+	_ limits.Carrier = boundFS{}
+	_ fs.StatFS      = boundStatFS{}
+	_ fs.ReadLinkFS  = boundLinkFS{}
+	_ fs.StatFS      = boundStatLinkFS{}
+	_ fs.ReadLinkFS  = boundStatLinkFS{}
 )
 
-// WithMaxFileSize makes a scan refuse a file once a read of it passes n
-// bytes, counting the file in UnreadableSources; n <= 0 sets no cap.
+// WithMaxFileSize refuses a file once a read of it passes n bytes, counting
+// it in UnreadableSources. New sets 512 KiB; n <= 0 sets no cap.
 func WithMaxFileSize(n int64) Option {
 	return func(s *Scanner) { s.maxFileSize = n }
 }
 
 // WithMaxReadBytes caps one scan call's total reads at n bytes, refusing every
-// read past it as unreadable; n <= 0 sets no cap.
+// read past it as unreadable. New sets 64 MiB; n <= 0 sets no cap.
 func WithMaxReadBytes(n int64) Option {
 	return func(s *Scanner) { s.maxReadBytes = n }
+}
+
+// WithMaxEntities refuses, whole and as unparsed, a file that would take one
+// adapter's parse past n items. New sets 10,000; n <= 0 sets no cap.
+func WithMaxEntities(n int) Option {
+	return func(s *Scanner) { s.maxEntities = n }
 }
 
 // ScanContext is Scan bounded by ctx: once ctx is done the scan fails with
@@ -41,7 +49,7 @@ func (s *Scanner) ScanContext(ctx context.Context, fsys fs.FS) (finding.Report, 
 			emit(w)
 		}
 	})
-	rep, err := s.scanFS(bound(ctx, fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), sink), sink, projectPass{})
+	rep, err := s.scanFS(bound(ctx, fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), nil, sink), sink, projectPass{})
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return finding.Report{}, ctxErr
 	}
@@ -50,11 +58,11 @@ func (s *Scanner) ScanContext(ctx context.Context, fsys fs.FS) (finding.Report, 
 
 // bound mirrors fsys's fs.StatFS and fs.ReadLinkFS: fsguard picks its arm by
 // asserting them, so offering one fsys lacks changes what a link resolves to.
-func bound(ctx context.Context, fsys fs.FS, limit int64, budget *readCap, sink *warnSink) fs.FS {
-	if ctx.Done() == nil && limit <= 0 && budget == nil {
+func bound(ctx context.Context, fsys fs.FS, limit int64, budget *readCap, entities *limits.Entities, sink *warnSink) fs.FS {
+	if ctx.Done() == nil && limit <= 0 && budget == nil && entities == nil {
 		return fsys
 	}
-	b := boundFS{ctx: ctx, fsys: fsys, limit: limit, budget: budget, sink: sink}
+	b := boundFS{ctx: ctx, fsys: fsys, limit: limit, budget: budget, entities: entities, sink: sink}
 	_, stat := fsys.(fs.StatFS)
 	_, link := fsys.(fs.ReadLinkFS)
 	switch {
@@ -76,12 +84,15 @@ func newReadBudget(n int64) *readCap {
 }
 
 type boundFS struct {
-	ctx    context.Context
-	fsys   fs.FS
-	limit  int64
-	budget *readCap
-	sink   *warnSink
+	ctx      context.Context
+	fsys     fs.FS
+	limit    int64
+	budget   *readCap
+	entities *limits.Entities
+	sink     *warnSink
 }
+
+func (b boundFS) EntityBudget() *limits.Entities { return b.entities }
 
 func (b boundFS) done(op, name string) error {
 	if err := b.ctx.Err(); err != nil {
@@ -221,15 +232,25 @@ func (f *cappedFile) take(n int64, over bool) {
 func (f *cappedFile) refusal() error {
 	switch {
 	case f.budget != nil && f.budget.spent:
-		err := &fs.PathError{Op: "read", Path: f.name, Err: fmt.Errorf("past the scan's read budget of %d bytes", f.budget.max)}
+		err := &fs.PathError{Op: "read", Path: f.name, Err: limits.RefusalBy(limits.ErrReadBudget, fmt.Sprintf("past the scan's %s read budget; not scanned", byteSize(f.budget.max)))}
 		// A reader may drop this error, and the refusal must still leave
 		// the report incomplete.
 		f.sink.source(adapter.Warning{File: f.name, Err: err}, fmt.Errorf("agentaudit: read budget: %s: %w", f.name, err))
 		return err
 	case f.file != nil && f.file.spent:
-		return &fs.PathError{Op: "read", Path: f.name, Err: fmt.Errorf("larger than %d bytes", f.file.max)}
+		return &fs.PathError{Op: "read", Path: f.name, Err: limits.RefusalBy(limits.ErrFileSize, fmt.Sprintf("over the %s limit for one file; not scanned", byteSize(f.file.max)))}
 	}
 	return nil
+}
+
+func byteSize(n int64) string {
+	switch {
+	case n%(1<<20) == 0:
+		return fmt.Sprintf("%d MiB", n>>20)
+	case n%(1<<10) == 0:
+		return fmt.Sprintf("%d KiB", n>>10)
+	}
+	return fmt.Sprintf("%d B", n)
 }
 
 type cappedDirFile struct {
