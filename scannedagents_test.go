@@ -46,6 +46,38 @@ func TestScan_ScannedAgentsSeparatesARecognizedSilentConfigFromAnUnknownOne(t *t
 	}
 }
 
+// A Codex plugin marker alone selects no adapter, where Codex config selects
+// Codex.
+func TestScan_ScannedAgentsIgnoresACodexPluginMarker(t *testing.T) {
+	tests := []struct {
+		name string
+		fsys fstest.MapFS
+		want []string
+	}{
+		{
+			name: "a Codex plugin marker alone",
+			fsys: fstest.MapFS{".codex-plugin/plugin.json": &fstest.MapFile{Data: []byte(`{"name":"x"}`)}},
+			want: []string{},
+		},
+		{
+			name: "a Codex config",
+			fsys: fstest.MapFS{".codex/config.toml": &fstest.MapFile{Data: []byte("")}},
+			want: []string{"codex"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rep, err := New().Scan(tt.fsys)
+			if err != nil {
+				t.Fatalf("Scan() error = %v, want nil", err)
+			}
+			if got := rep.ScannedAgents(); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("ScannedAgents() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
 // An adapter whose Parse failed stays in the scanned set. It was scanned and
 // its blind spot is already carried by the degradation tally, so dropping it
 // would shrink the list under an I/O fault into a claim that no known agent

@@ -50,6 +50,10 @@ type signatures struct {
 	manifests     map[string]bool
 }
 
+type pluginMarkerer interface {
+	PluginMarkers() []adapter.Signature
+}
+
 func newSignatures(adapters []adapter.Adapter) signatures {
 	s := signatures{
 		configFolders: map[string]bool{},
@@ -57,7 +61,11 @@ func newSignatures(adapters []adapter.Adapter) signatures {
 		manifests:     map[string]bool{},
 	}
 	for _, a := range adapters {
-		for _, sig := range a.Signatures() {
+		sigs := a.Signatures()
+		if m, ok := a.(pluginMarkerer); ok {
+			sigs = append(sigs, m.PluginMarkers()...)
+		}
+		for _, sig := range sigs {
 			if sig.AnyDepth {
 				s.anyDepth = append(s.anyDepth, sig)
 				s.markers[sig.Dir] = true
