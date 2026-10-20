@@ -1,7 +1,5 @@
-// Package limits holds what a scan's limits share with the code they bound:
-// the sentinel a file, read, entity, depth or alias limit wraps in its
-// refusal, and the entity budget one adapter's parse spends, which the
-// parsers find on the fs.FS they are handed.
+// Package limits holds what a scan's limits share with the code they bound
+// and the frontend that tunes them.
 package limits
 
 import (
@@ -17,18 +15,38 @@ import (
 	"github.com/manifold-security/agentaudit/internal/ir"
 )
 
+// The defaults a scan's limits start from.
+const (
+	DefaultFileSize  int64 = 512 << 10
+	DefaultReadBytes int64 = 64 << 20
+	DefaultEntities        = 10000
+)
+
 // ErrLimit is the sentinel the scan's file, read, entity, depth and alias
 // limits wrap in a refusal.
 var ErrLimit = errors.New("refused by a scan limit")
 
+// The sentinels a refusal wraps to name the limit that refused it.
+var (
+	ErrFileSize   = fmt.Errorf("file size %w", ErrLimit)
+	ErrReadBudget = fmt.Errorf("read budget %w", ErrLimit)
+	ErrEntities   = fmt.Errorf("entities %w", ErrLimit)
+)
+
 // Refusal returns an error reading msg that wraps ErrLimit.
-func Refusal(msg string) error { return refusal(msg) }
+func Refusal(msg string) error { return RefusalBy(ErrLimit, msg) }
 
-type refusal string
+// RefusalBy returns an error reading msg that wraps limit.
+func RefusalBy(limit error, msg string) error { return refusal{msg: msg, limit: limit} }
 
-func (r refusal) Error() string { return string(r) }
+type refusal struct {
+	msg   string
+	limit error
+}
 
-func (refusal) Unwrap() error { return ErrLimit }
+func (r refusal) Error() string { return r.msg }
+
+func (r refusal) Unwrap() error { return r.limit }
 
 // JSONDepthRefusal returns err as a refusal when it is encoding/json giving
 // up past its nesting depth, which a JavaScript agent's JSON.parse reads
@@ -162,7 +180,7 @@ func weight(e ir.Entity) int {
 // that says so.
 func (b *Entities) Refuse(file string) adapter.Warning {
 	b.refused[file] = true
-	return adapter.Warning{File: file, Err: Refusal(fmt.Sprintf("would take the scan past %d entities; not scanned", b.max))}
+	return adapter.Warning{File: file, Err: RefusalBy(ErrEntities, fmt.Sprintf("would take the scan past %d entities; not scanned", b.max))}
 }
 
 // Keep drops the entities of every file b refused, those Admit kept before

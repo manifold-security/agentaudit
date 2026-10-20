@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/manifold-security/agentaudit"
 )
 
 // resolveTargets unions the positional path with scanDirs, collapsing every
@@ -74,7 +76,7 @@ func displayPath(target, proj string) string {
 
 // targetBlocks holds the root open only for its own call, so scanning many
 // targets never accumulates descriptors (TestRun_ClosesOneRootPerTarget).
-func targetBlocks(target string, recursive bool, warn func(error)) ([]block, error) {
+func targetBlocks(target string, recursive bool, warn func(error), opts ...agentaudit.Option) ([]block, error) {
 	fsys, closeRoot, err := openTarget(target)
 	if err != nil {
 		return nil, err
@@ -82,14 +84,14 @@ func targetBlocks(target string, recursive bool, warn func(error)) ([]block, err
 	defer func() { _ = closeRoot() }()
 
 	if !recursive {
-		rep, err := scan(fsys, warn)
+		rep, err := scan(fsys, warn, opts...)
 		if err != nil {
 			return nil, err
 		}
 		return []block{{Path: displayPath(target, "."), Report: rep}}, nil
 	}
 
-	projects, err := scanRecursive(fsys, warn)
+	projects, err := scanRecursive(fsys, warn, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/manifold-security/agentaudit"
 	"github.com/manifold-security/agentaudit/adapter"
 )
 
@@ -101,7 +102,7 @@ func resolveBase(base adapter.Base) (string, error) {
 // than propagated: a silent skip would read as a false clean. A Base that
 // exists but will not open sets unreadable, so an empty run over it is not
 // reported as absent.
-func globalBlocks(adapters []adapter.Adapter, warn func(error)) (blocks []block, unreadable bool, err error) {
+func globalBlocks(adapters []adapter.Adapter, warn func(error), opts ...agentaudit.Option) (blocks []block, unreadable bool, err error) {
 	specs, err := globalSpecs(adapters)
 	if err != nil {
 		return nil, false, err
@@ -129,7 +130,7 @@ func globalBlocks(adapters []adapter.Adapter, warn func(error)) (blocks []block,
 			continue
 		}
 
-		rep, err := scanGlobal(masked, warn)
+		rep, err := scanGlobal(masked, warn, opts...)
 		_ = closeRoot()
 		if err != nil {
 			return nil, false, err

@@ -78,9 +78,9 @@ type Option func(*Scanner)
 // each limit whose option names a default holds it.
 func New(opts ...Option) *Scanner {
 	s := &Scanner{
-		maxFileSize:  512 << 10,
-		maxReadBytes: 64 << 20,
-		maxEntities:  10000,
+		maxFileSize:  limits.DefaultFileSize,
+		maxReadBytes: limits.DefaultReadBytes,
+		maxEntities:  limits.DefaultEntities,
 	}
 	for _, opt := range opts {
 		opt(s)

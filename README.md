@@ -79,7 +79,7 @@ A repository whose agent configuration yields nothing prints `no capabilities fo
 
 Under `--global-config`, a home directory with no agent configuration prints `no user-level agent config found`, and one that exists but cannot be opened prints `user-level agent config could not be read`.
 
-Exit codes: `0` no findings, `1` at least one finding or a file a scan limit refused, `2` usage or runtime error.
+Exit codes: `0` no findings, `1` at least one finding or a file a scan limit refused, `2` usage or runtime error. A refused file is named in a warning on stderr; when the limit that refused it has a flag below, a closing `hint:` line names that flag.
 
 ## Flags
 
@@ -93,6 +93,9 @@ Usage: `agentaudit [PATH]`. `PATH` defaults to the current directory.
 | `-r, --recursive` | Scans every project beneath `PATH`, one report block per project. |
 | `--scan-dir <path>` | Adds another target, scanned alongside `PATH`. Repeatable. |
 | `--global-config` | Scans only each agent's user-level configuration in your home directory. Cannot be combined with `PATH`, `--scan-dir` or `-r`. |
+| `--max-file-size <bytes>` | Refuses a file larger than this, in bytes or with a `KiB`, `MiB` or `GiB` suffix (`2MiB`). Default `512KiB`; `0` turns the limit off. Raise it when a legitimate file is refused, such as a large `~/.claude.json` under `--global-config`. |
+| `--max-read-bytes <bytes>` | Refuses reads past this total in one scan, in bytes or with a `KiB`, `MiB` or `GiB` suffix. Default `64MiB`; `0` turns the limit off. |
+| `--max-entities <n>` | Refuses a file that would take one agent's parse past this many items. Default 10,000; `0` turns the limit off. |
 | `-V, --version` | Prints the version and exits. |
 
 ## Examples
@@ -136,6 +139,12 @@ Scan only your own user-level agent configuration:
 
 ```sh
 agentaudit --global-config
+```
+
+Admit a user-level config larger than the default file limit:
+
+```sh
+agentaudit --global-config --max-file-size 4MiB
 ```
 
 ## Library usage

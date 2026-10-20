@@ -232,13 +232,13 @@ func (f *cappedFile) take(n int64, over bool) {
 func (f *cappedFile) refusal() error {
 	switch {
 	case f.budget != nil && f.budget.spent:
-		err := &fs.PathError{Op: "read", Path: f.name, Err: limits.Refusal(fmt.Sprintf("past the scan's %s read budget; not scanned", byteSize(f.budget.max)))}
+		err := &fs.PathError{Op: "read", Path: f.name, Err: limits.RefusalBy(limits.ErrReadBudget, fmt.Sprintf("past the scan's %s read budget; not scanned", byteSize(f.budget.max)))}
 		// A reader may drop this error, and the refusal must still leave
 		// the report incomplete.
 		f.sink.source(adapter.Warning{File: f.name, Err: err}, fmt.Errorf("agentaudit: read budget: %s: %w", f.name, err))
 		return err
 	case f.file != nil && f.file.spent:
-		return &fs.PathError{Op: "read", Path: f.name, Err: limits.Refusal(fmt.Sprintf("over the %s limit for one file; not scanned", byteSize(f.file.max)))}
+		return &fs.PathError{Op: "read", Path: f.name, Err: limits.RefusalBy(limits.ErrFileSize, fmt.Sprintf("over the %s limit for one file; not scanned", byteSize(f.file.max)))}
 	}
 	return nil
 }
