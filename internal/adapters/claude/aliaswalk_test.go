@@ -42,6 +42,10 @@ func TestAliasedNodesWalksAChainedAliasWithinAOneMiBStack(t *testing.T) {
 	if got := aliasedNodes(&doc, maxAliasedNodes); got > maxAliasedNodes {
 		t.Fatalf("premise: aliasedNodes() = %d, want the whole chain walked within %d", got, maxAliasedNodes)
 	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
 	for _, tc := range []struct {
 		mode      string
 		overflows bool
@@ -49,7 +53,7 @@ func TestAliasedNodesWalksAChainedAliasWithinAOneMiBStack(t *testing.T) {
 		{"recurse", true},
 		{"walk", false},
 	} {
-		cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
+		cmd := exec.Command(exe, "-test.run=^"+t.Name()+"$")
 		cmd.Env = append(os.Environ(), aliasWalkProbe+"="+tc.mode)
 		out, err := cmd.CombinedOutput()
 		overflowed := strings.Contains(string(out), "goroutine stack exceeds")
