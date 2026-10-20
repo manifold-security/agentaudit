@@ -10,6 +10,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 const (
@@ -98,13 +99,16 @@ func payloadEntities(fsys fs.FS, dir string) ([]ir.Entity, []adapter.Warning) {
 			return nil
 		}
 
-		entities = append(entities, ir.BundledPayload{
+		payload := []ir.Entity{ir.BundledPayload{
 			Path:       p,
 			Extension:  strings.ToLower(path.Ext(p)),
 			Executable: executableValue(d),
 			Origin:     payloadOriginSkill,
 			Location:   ir.Location{File: p},
-		})
+		}}
+		payload, refused := limits.Of(fsys).Admit(p, payload, nil)
+		entities = append(entities, payload...)
+		warnings = append(warnings, refused...)
 		return nil
 	})
 

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -95,7 +96,9 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 				}
 			}
 
+			limited := false
 			warn := func(warnErr error) {
+				limited = limited || errors.Is(warnErr, agentaudit.ErrLimit)
 				fmt.Fprintln(stderr, "warning:", report.Escape(warnErr.Error()))
 			}
 
@@ -152,7 +155,7 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 					hasFindings = true
 				}
 			}
-			if hasFindings {
+			if hasFindings || limited {
 				*code = 1
 			} else {
 				*code = 0
@@ -175,8 +178,8 @@ type block struct {
 	Report finding.Report
 }
 
-// run translates the outcome into an exit code: 0 clean, 1 findings present,
-// 2 usage or runtime error.
+// run translates the outcome into an exit code: 0 clean, 1 findings present
+// or a file a limit refused, 2 usage or runtime error.
 func run(args []string, stdout, stderr io.Writer) int {
 	var code int
 	cmd := newRootCmd(stdout, stderr, &code)

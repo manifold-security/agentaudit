@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"math"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -19,6 +18,8 @@ import (
 )
 
 const maxFileSize = 256
+
+const defaultMaxFileSize = 512 << 10
 
 func padded(body string, size int) []byte {
 	return []byte(body + strings.Repeat(" ", size-len(body)))
@@ -141,20 +142,44 @@ func TestWithMaxFileSizeRefusesAFileOnlyPastTheCap(t *testing.T) {
 	}
 }
 
+func TestNewCapsEachFileAt512KiB(t *testing.T) {
+	refusal := "agentaudit: parse claude-code: " + settingsFile + ": read " + settingsFile + ": over the 512 KiB limit for one file; not scanned"
+	for _, tc := range []struct {
+		name     string
+		size     int
+		findings []string
+		warnings []string
+	}{
+		{"at the limit", defaultMaxFileSize, []string{"claude.hook.command@" + settingsFile}, nil},
+		{"past the limit", defaultMaxFileSize + 1, nil, []string{refusal}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var warnings []string
+			s := agentaudit.New(agentaudit.WithWarnFunc(func(w error) { warnings = append(warnings, w.Error()) }))
+
+			rep, err := s.Scan(fstest.MapFS{settingsFile: &fstest.MapFile{Data: padded(validStubSettings, tc.size)}})
+			if err != nil {
+				t.Fatalf("Scan() error = %v, want nil", err)
+			}
+			if got := findingsByFile(rep); !slices.Equal(got, tc.findings) {
+				t.Errorf("findings = %q, want %q", got, tc.findings)
+			}
+			if got := rep.UnreadableSources(); got != len(tc.warnings) {
+				t.Errorf("UnreadableSources() = %d, want %d", got, len(tc.warnings))
+			}
+			if !slices.Equal(warnings, tc.warnings) {
+				t.Errorf("warnings = %q, want %q", warnings, tc.warnings)
+			}
+		})
+	}
+}
+
 func TestWithMaxFileSizeAtZeroBelowOrTheInt64MaxScansAsUncapped(t *testing.T) {
 	fsys := fstest.MapFS{
-		".claude/settings.json":   &fstest.MapFile{Data: padded(validStubSettings, 4*maxFileSize)},
-		".claude/skills/demo/run": &fstest.MapFile{Data: padded("#!/bin/sh\n", 4*maxFileSize)},
+		settingsFile:   &fstest.MapFile{Data: padded(validStubSettings, defaultMaxFileSize+1)},
+		sniffedPayload: &fstest.MapFile{Data: padded("#!/bin/sh\n", defaultMaxFileSize+1)},
 	}
-	want, err := agentaudit.New().Scan(fsys)
-	if err != nil {
-		t.Fatalf("uncapped Scan() error = %v", err)
-	}
-	for _, id := range []string{"claude.hook.command", "claude.payload.bundled-script"} {
-		if !slices.ContainsFunc(want.Findings(), func(f finding.Finding) bool { return f.RuleID == id }) {
-			t.Fatalf("uncapped Scan() has no %s finding: %+v", id, want.Findings())
-		}
-	}
+	want := []string{"claude.hook.command@" + settingsFile, "claude.payload.bundled-script@" + sniffedPayload}
 
 	live, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -171,8 +196,8 @@ func TestWithMaxFileSizeAtZeroBelowOrTheInt64MaxScansAsUncapped(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ScanContext() error = %v, want nil", err)
 				}
-				if !reflect.DeepEqual(got, want) {
-					t.Errorf("ScanContext() = %+v, want the uncapped %+v", got, want)
+				if findings := findingsByFile(got); !slices.Equal(findings, want) || got.UnreadableSources() != 0 {
+					t.Errorf("findings = %q, UnreadableSources() = %d, want %q read whole", findings, got.UnreadableSources(), want)
 				}
 			})
 		}

@@ -12,7 +12,7 @@ var WithRulesFS = withRulesFS
 var WithAdapters = withAdapters
 
 func Bound(ctx context.Context, fsys fs.FS, limit int64) fs.FS {
-	return bound(ctx, fsys, limit, nil, nil)
+	return bound(ctx, fsys, limit, nil, nil, nil)
 }
 
 // EmbeddedRuleIDs reads ids from the shipped ruleset itself, so a coverage

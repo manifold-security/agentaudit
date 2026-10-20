@@ -79,7 +79,7 @@ A repository whose agent configuration yields nothing prints `no capabilities fo
 
 Under `--global-config`, a home directory with no agent configuration prints `no user-level agent config found`, and one that exists but cannot be opened prints `user-level agent config could not be read`.
 
-Exit codes: `0` no findings, `1` at least one finding, `2` usage or runtime error.
+Exit codes: `0` no findings, `1` at least one finding or a file a scan limit refused, `2` usage or runtime error.
 
 ## Flags
 

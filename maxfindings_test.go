@@ -163,7 +163,7 @@ func TestWithMaxFindingsReleasesFindingsPastTheCutDuringTheScan(t *testing.T) {
 
 	retained := func(opts ...agentaudit.Option) uint64 {
 		var mid uint64
-		opts = append(opts, agentaudit.WithAdapters(claude.Adapter{}, heapProbe{live: &mid}))
+		opts = append(opts, agentaudit.WithAdapters(claude.Adapter{}, heapProbe{live: &mid}), agentaudit.WithMaxEntities(servers))
 		before := liveHeap()
 		rep, err := agentaudit.New(opts...).Scan(fsys)
 		if err != nil {

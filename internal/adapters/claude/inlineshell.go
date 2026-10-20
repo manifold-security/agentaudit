@@ -97,17 +97,17 @@ func inlineEntitiesInLine(line string, lineNo int, shell, file string) []ir.Enti
 	return entities
 }
 
-// parseCommandFile treats a command file and a SKILL.md as one frontmatter
+// parseCommand treats a command file and a SKILL.md as one frontmatter
 // schema, so a command's hooks declare what a skill's do, while a command
 // emits no ir.Skill presence entity.
-func parseCommandFile(data []byte, file string) ([]ir.Entity, *adapter.Warning) {
-	t := scanTarget(data, file)
+func parseCommand(data []byte, file string, room int) ([]ir.Entity, *adapter.Warning) {
+	t := scanTarget(data, file, room)
 	if !t.OK {
 		return nil, t.Warning
 	}
 
 	faults := t.Faults
-	hooks, err := hooksFromNode(t.Frontmatter.Hooks)
+	hooks, err := hookGroupsFromNode(t.Frontmatter.Hooks, faults.room)
 	faults.mark("hooks", err)
 
 	entities := hookEntities(hooks, file)
@@ -116,7 +116,7 @@ func parseCommandFile(data []byte, file string) ([]ir.Entity, *adapter.Warning) 
 	return entities, firstWarning(t.Warning, faults, file)
 }
 
-var commandSource = markdownSource{matches: isMarkdownFile, parse: parseCommandFile}
+var commandSource = markdownSource{matches: isMarkdownFile, parse: parseCommand}
 
 func walkCommandDir(fsys fs.FS, dir string, check func(fs.FS, string) error) ([]ir.Entity, []adapter.Warning, error) {
 	return walkMarkdownDir(fsys, dir, commandSource, check)

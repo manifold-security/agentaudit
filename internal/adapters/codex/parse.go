@@ -5,6 +5,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/tomlconf"
 )
 
@@ -55,5 +56,6 @@ func configEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 	entities = append(entities, hooks...)
 	warnings = append(warnings, hookWarnings...)
 
+	entities, warnings = limits.Of(fsys).Admit(configFileName, entities, warnings)
 	return entities, warnings
 }

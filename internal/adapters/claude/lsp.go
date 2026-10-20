@@ -10,6 +10,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -153,20 +154,20 @@ func pluginLSPEntities(fsys fs.FS, root, manifestFile string, raw json.RawMessag
 		warnings = append(warnings, *warning)
 	} else if doc != nil {
 		entries, ew := lspServersFromDoc(*doc)
-		warnings = append(warnings, ew...)
 		es, esw := lspServerEntities(entries, doc.File, v)
+		es, ew = limits.Of(fsys).Admit(doc.File, es, append(ew, esw...))
 		entities = append(entities, es...)
-		warnings = append(warnings, esw...)
+		warnings = append(warnings, ew...)
 	}
 
 	docs, docWarnings := pluginDocs(fsys, root, manifestFile, lspServersKey, raw)
 	warnings = append(warnings, docWarnings...)
 	for _, doc := range docs {
 		entries, ew := lspServersFromDoc(doc)
-		warnings = append(warnings, ew...)
 		es, esw := lspServerEntities(entries, doc.File, v)
+		es, ew = limits.Of(fsys).Admit(doc.File, es, append(ew, esw...))
 		entities = append(entities, es...)
-		warnings = append(warnings, esw...)
+		warnings = append(warnings, ew...)
 	}
 
 	return entities, warnings

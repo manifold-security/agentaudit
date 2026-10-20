@@ -8,6 +8,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -67,6 +68,7 @@ func sandboxEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	entities = append(entities, policy...)
 	warnings = append(warnings, policyWarnings...)
 
+	entities, warnings = limits.Of(fsys).Admit(sandboxFileName, entities, warnings)
 	return entities, warnings, nil
 }
 

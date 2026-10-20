@@ -15,7 +15,7 @@ import (
 // home.
 func (s *Scanner) ScanGlobal(fsys fs.FS) (finding.Report, error) {
 	sink := newWarnSink(s.emitFunc())
-	return s.scanFS(bound(context.Background(), fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), sink), sink, globalPass{})
+	return s.scanFS(bound(context.Background(), fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), nil, sink), sink, globalPass{})
 }
 
 type globalPass struct{}

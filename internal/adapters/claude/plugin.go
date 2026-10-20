@@ -13,6 +13,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -144,7 +145,8 @@ func pluginRootEntities(fsys fs.FS, root string) ([]ir.Entity, []adapter.Warning
 	}
 
 	plugin := pluginName(m, root)
-	entities := []ir.Entity{pluginPresenceEntity(m, root, manifestFile)}
+	entities, refused := limits.Of(fsys).Admit(manifestFile, []ir.Entity{pluginPresenceEntity(m, root, manifestFile)}, nil)
+	warnings = append(warnings, refused...)
 
 	mcpEntities, mcpWarnings := pluginMCPEntities(fsys, root, manifestFile, m.MCPServers)
 	entities = append(entities, mcpEntities...)
@@ -234,7 +236,7 @@ func pluginExecutableEntities(fsys fs.FS, root, plugin string) ([]ir.Entity, []a
 		})
 	}
 
-	return entities, nil
+	return limits.Of(fsys).Admit(binDir, entities, nil)
 }
 
 type pluginDoc struct {
@@ -338,6 +340,9 @@ func pluginDocs(fsys fs.FS, root, manifestFile, key string, raw json.RawMessage)
 		if err := json.Unmarshal(raw, &elems); err != nil {
 			return nil, []adapter.Warning{{File: manifestFile, Err: fmt.Errorf("%s: %w", key, err)}}
 		}
+		if refusal, ok := limits.Of(fsys).Spend(manifestFile, len(elems)); !ok {
+			return nil, []adapter.Warning{refusal}
+		}
 		var docs []pluginDoc
 		var warnings []adapter.Warning
 		for i, elem := range elems {
@@ -416,7 +421,7 @@ func pluginDocObjectForm(doc pluginDoc) (stop bool, warnings []adapter.Warning) 
 // bare server map; a top-level "mcpServers" key selects the wrapper, so a bare
 // map holding a server named "mcpServers" reads as a wrapper — the safer
 // reading, since it still surfaces the inner servers.
-func mcpServersFromDoc(doc pluginDoc) (map[string]mcpjson.Entry, []adapter.Warning) {
+func mcpServersFromDoc(doc pluginDoc, budget *limits.Entities) (map[string]mcpjson.Entry, []adapter.Warning) {
 	if stop, warnings := pluginDocObjectForm(doc); stop {
 		return nil, warnings
 	}
@@ -426,14 +431,15 @@ func mcpServersFromDoc(doc pluginDoc) (map[string]mcpjson.Entry, []adapter.Warni
 		return nil, []adapter.Warning{{File: doc.File, Err: err}}
 	}
 	if probe.MCPServers != nil {
-		return mcpjson.ServersFromRaw(probe.MCPServers, doc.File, "mcpServers")
+		return mcpjson.ServersFromRaw(probe.MCPServers, doc.File, "mcpServers", budget)
 	}
-	return mcpjson.ServersFromRaw(doc.Data, doc.File, "")
+	return mcpjson.ServersFromRaw(doc.Data, doc.File, "", budget)
 }
 
 // pluginMCPEntities substitutes placeholders before each entity is built.
 func pluginMCPEntities(fsys fs.FS, root, manifestFile string, raw json.RawMessage) ([]ir.Entity, []adapter.Warning) {
 	v := dirVars{PluginRoot: root}
+	budget := limits.Of(fsys)
 
 	var entities []ir.Entity
 	var warnings []adapter.Warning
@@ -447,22 +453,22 @@ func pluginMCPEntities(fsys fs.FS, root, manifestFile string, raw json.RawMessag
 		if warning != nil {
 			warnings = append(warnings, *warning)
 		} else if doc != nil {
-			servers, docWarnings := mcpServersFromDoc(*doc)
-			warnings = append(warnings, docWarnings...)
+			servers, docWarnings := mcpServersFromDoc(*doc, budget)
 			mcpEnts, mcpWarnings := entitiesFromMCPMap(expandMCPMap(servers, v), doc.File, "mcpServers")
+			mcpEnts, docWarnings = budget.Admit(doc.File, mcpEnts, append(docWarnings, mcpWarnings...))
 			entities = append(entities, mcpEnts...)
-			warnings = append(warnings, mcpWarnings...)
+			warnings = append(warnings, docWarnings...)
 		}
 	}
 
 	docs, docWarnings := pluginDocs(fsys, root, manifestFile, "mcpServers", raw)
 	warnings = append(warnings, docWarnings...)
 	for _, doc := range docs {
-		servers, sw := mcpServersFromDoc(doc)
-		warnings = append(warnings, sw...)
+		servers, sw := mcpServersFromDoc(doc, budget)
 		mcpEnts, mcpWarnings := entitiesFromMCPMap(expandMCPMap(servers, v), doc.File, "mcpServers")
+		mcpEnts, sw = budget.Admit(doc.File, mcpEnts, append(sw, mcpWarnings...))
 		entities = append(entities, mcpEnts...)
-		warnings = append(warnings, mcpWarnings...)
+		warnings = append(warnings, sw...)
 	}
 
 	return entities, warnings
@@ -552,16 +558,18 @@ func pluginHookEntities(fsys fs.FS, root, manifestFile string, raw json.RawMessa
 		warnings = append(warnings, *warning)
 	} else if doc != nil {
 		hooks, hw := hooksFromDoc(*doc)
-		warnings = append(warnings, hw...)
-		entities = append(entities, expandHookEntities(hookEntities(hooks, doc.File), v)...)
+		found, kept := limits.Of(fsys).Admit(doc.File, expandHookEntities(hookEntities(hooks, doc.File), v), hw)
+		entities = append(entities, found...)
+		warnings = append(warnings, kept...)
 	}
 
 	docs, docWarnings := pluginDocs(fsys, root, manifestFile, "hooks", raw)
 	warnings = append(warnings, docWarnings...)
 	for _, doc := range docs {
 		hooks, hw := hooksFromDoc(doc)
-		warnings = append(warnings, hw...)
-		entities = append(entities, expandHookEntities(hookEntities(hooks, doc.File), v)...)
+		found, kept := limits.Of(fsys).Admit(doc.File, expandHookEntities(hookEntities(hooks, doc.File), v), hw)
+		entities = append(entities, found...)
+		warnings = append(warnings, kept...)
 	}
 
 	return entities, warnings
@@ -608,8 +616,8 @@ var (
 )
 
 var (
-	pluginShippedSkillSource   = markdownSource{matches: isSkillFile, parse: parseSkillFile, namesLinks: true}
-	pluginShippedCommandSource = markdownSource{matches: isMarkdownFile, parse: parseCommandFile, namesLinks: true}
+	pluginShippedSkillSource   = markdownSource{matches: isSkillFile, parse: parseSkill, namesLinks: true}
+	pluginShippedCommandSource = markdownSource{matches: isMarkdownFile, parse: parseCommand, namesLinks: true}
 )
 
 // walkPluginShippedSkillDir refuses a non-regular file: a plugin is third-party
@@ -631,7 +639,7 @@ func walkPluginShippedAgentDir(fsys fs.FS, dir string) ([]ir.Entity, []adapter.W
 // pluginComponentPaths resolves a declared key into the paths the walk visits.
 // mcpjson.FormAbsent is the caller's business: it alone can tell a
 // declared-but-empty key from one that falls back to the default.
-func pluginComponentPaths(root, manifestFile, key string, raw json.RawMessage) ([]string, []adapter.Warning) {
+func pluginComponentPaths(root, manifestFile, key string, raw json.RawMessage, budget *limits.Entities) ([]string, []adapter.Warning) {
 	switch mcpjson.FormOf(raw) {
 	case mcpjson.FormString:
 		var rel string
@@ -647,6 +655,9 @@ func pluginComponentPaths(root, manifestFile, key string, raw json.RawMessage) (
 		var elems []json.RawMessage
 		if err := json.Unmarshal(raw, &elems); err != nil {
 			return nil, []adapter.Warning{{File: manifestFile, Err: fmt.Errorf("%s: %w", key, err)}}
+		}
+		if refusal, ok := budget.Spend(manifestFile, len(elems)); !ok {
+			return nil, []adapter.Warning{refusal}
 		}
 		var paths []string
 		var warnings []adapter.Warning
@@ -697,7 +708,7 @@ func pluginComponentEntities(fsys fs.FS, root, manifestFile string, raw json.Raw
 		return entities, warnings
 	}
 
-	paths, pathWarnings := pluginComponentPaths(root, manifestFile, c.key, raw)
+	paths, pathWarnings := pluginComponentPaths(root, manifestFile, c.key, raw, limits.Of(fsys))
 	warnings = append(warnings, pathWarnings...)
 	for _, p := range paths {
 		es, ws := walkPluginComponentPath(fsys, root, p, declaredComponentPath, c)

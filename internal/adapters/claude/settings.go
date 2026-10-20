@@ -12,6 +12,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 // settingsFileNames are read independently. Neither file overrides the other.
@@ -94,7 +95,9 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 			continue
 		}
 
-		entities = append(entities, entitiesFromSettings(s, file)...)
+		found, refused := limits.Of(fsys).Admit(file, entitiesFromSettings(s, file), nil)
+		entities = append(entities, found...)
+		warnings = append(warnings, refused...)
 	}
 
 	mcp, mcpWarnings, err := mcpEntities(fsys)

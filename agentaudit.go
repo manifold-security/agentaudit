@@ -16,6 +16,7 @@ import (
 	"github.com/manifold-security/agentaudit/finding"
 	"github.com/manifold-security/agentaudit/internal/discovery"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/registry"
 	"github.com/manifold-security/agentaudit/internal/ruleeng"
 )
@@ -49,6 +50,10 @@ const (
 // TestScanRootDiscoveryFailureStaysFatal pins. A nil WarnFunc is a no-op.
 type WarnFunc func(error)
 
+// ErrLimit is the sentinel errors.Is finds in a warning about a file a scan
+// limit refused.
+var ErrLimit = limits.ErrLimit
+
 // Scanner holds the resolved configuration built by New and its Options.
 // One Scanner may run Scan and ScanRecursive concurrently, and its WarnFunc
 // may then be called concurrently.
@@ -62,15 +67,21 @@ type Scanner struct {
 	maxFileSize  int64
 	maxFindings  int
 	maxReadBytes int64
+	maxEntities  int
 }
 
 // Option configures a Scanner built by New.
 type Option func(*Scanner)
 
 // New builds a Scanner from opts. With no options every registered adapter
-// runs, warnings are dropped, and rules load from the embedded default set.
+// runs, warnings are dropped, rules load from the embedded default set, and
+// each limit whose option names a default holds it.
 func New(opts ...Option) *Scanner {
-	s := &Scanner{}
+	s := &Scanner{
+		maxFileSize:  512 << 10,
+		maxReadBytes: 64 << 20,
+		maxEntities:  10000,
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -281,8 +292,11 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 		// reaches the reader through the degradation tally.
 		scanned = append(scanned, string(a.Agent()))
 
-		entities, warnings, err := p.entities(a, fsys)
+		budget := limits.NewEntities(s.maxEntities)
+		entities, warnings, err := p.entities(a, bound(context.Background(), fsys, 0, nil, budget, nil))
+		warnings = budget.KeepWarnings(warnings)
 		for _, w := range warnings {
+			w.Err = limits.JSONDepthRefusal(w.Err)
 			sink.source(w, fmt.Errorf("agentaudit: parse %s: %s: %w", a.Agent(), w.File, w.Err))
 		}
 		if err != nil {
@@ -290,7 +304,7 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 			continue
 		}
 
-		hits := ruleeng.Evaluate(rules, entities, string(a.Agent()))
+		hits := ruleeng.Evaluate(rules, budget.Keep(entities), string(a.Agent()))
 		for _, h := range hits {
 			f, ok := toFinding(rulesByID[h.RuleID], h, a.Agent())
 			if !ok {

@@ -10,6 +10,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/tomlconf"
 )
 
@@ -46,7 +47,9 @@ func hooksFileEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 			Err:  errors.New("expected " + formName(hooksFileName, tomlconf.FormTable) + ", found " + formName(hooksFileName, tomlconf.FormOf(doc))),
 		}}
 	}
-	return hookEntities(hooksFileName, table[hooksKey], nil)
+	entities, warnings := hookEntities(hooksFileName, table[hooksKey], nil)
+	entities, warnings = limits.Of(fsys).Admit(hooksFileName, entities, warnings)
+	return entities, warnings
 }
 
 func hookEntities(file string, raw any, settings map[string]bool) ([]ir.Entity, []adapter.Warning) {

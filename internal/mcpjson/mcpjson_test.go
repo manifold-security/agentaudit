@@ -1,9 +1,11 @@
 package mcpjson
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 const testFile = ".mcp.json"
@@ -44,9 +47,46 @@ func TestServersFromFileParityWithEntitiesFromFile(t *testing.T) {
 	}
 }
 
+// The malformed entry warns only when the budget has room for every entry,
+// and decoding leaves the budget for the caller to spend.
+func TestServersFromRawStopsDecodingAtTheBudget(t *testing.T) {
+	raw := json.RawMessage(`{"a":{"command":"x"},"b":{"command":"x"},"c":{"command":1}}`)
+	const malformed = "mcpServers.c: json: cannot unmarshal number into Go struct field Entry.command of type string"
+	for _, tc := range []struct {
+		name    string
+		budget  *limits.Entities
+		servers []string
+		warning string
+	}{
+		{"no budget", nil, []string{"a", "b"}, malformed},
+		{"room for every entry", limits.NewEntities(3), []string{"a", "b"}, malformed},
+		{"room short of the entries", limits.NewEntities(2), nil, "would take the scan past 2 entities; not scanned"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			room := tc.budget.Room()
+			servers, warnings := ServersFromRaw(raw, testFile, "mcpServers", tc.budget)
+
+			var names []string
+			for name := range servers {
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tc.servers) {
+				t.Errorf("servers = %q, want %q", names, tc.servers)
+			}
+			if len(warnings) != 1 || warnings[0].File != testFile || warnings[0].Err.Error() != tc.warning {
+				t.Errorf("warnings = %+v, want one on %s reading %q", warnings, testFile, tc.warning)
+			}
+			if got := tc.budget.Room(); got != room {
+				t.Errorf("Room() = %d after decoding, want the %d it had", got, room)
+			}
+		})
+	}
+}
+
 // A wrong-typed headersHelper must not fail the entry's own decode.
 func TestServersFromRawDecodesAnObjectValuedHeadersHelper(t *testing.T) {
-	servers, warnings := ServersFromRaw([]byte(`{"docs":{"command":"npx","headersHelper":{"nested":"x"}}}`), testFile, "mcpServers")
+	servers, warnings := ServersFromRaw([]byte(`{"docs":{"command":"npx","headersHelper":{"nested":"x"}}}`), testFile, "mcpServers", nil)
 	if len(warnings) != 0 {
 		t.Fatalf("ServersFromRaw() warnings = %+v, want none", warnings)
 	}

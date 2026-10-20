@@ -7,6 +7,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -38,6 +39,7 @@ func worktreeEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 		entities = append(entities, keyEntities...)
 		warnings = append(warnings, keyWarnings...)
 	}
+	entities, warnings = limits.Of(fsys).Admit(worktreesFileName, entities, warnings)
 	return entities, warnings, nil
 }
 

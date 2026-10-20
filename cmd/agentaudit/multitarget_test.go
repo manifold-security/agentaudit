@@ -117,8 +117,8 @@ func (f degradedTargetFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return f.m.ReadDir(name)
 }
 
-// Degradation aggregates per block, never globally, and the exit code stays 0
-// because neither block has an actual finding.
+// Degradation aggregates per block, never globally, and a read fault beside
+// no finding in either block leaves the exit code at 0.
 func TestRun_MultiTarget_DegradedPlusCleanNoFindingsExitsZero(t *testing.T) {
 	degraded := degradedTargetFS{
 		m:       fstest.MapFS{"broken/file.txt": &fstest.MapFile{Data: []byte("x")}},

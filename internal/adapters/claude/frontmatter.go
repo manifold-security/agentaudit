@@ -12,6 +12,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -24,7 +25,7 @@ const skillFileName = "SKILL.md"
 const frontmatterFence = "---"
 
 // subagentFrontmatter is the decoded shape of a .claude/agents/*.md file's
-// frontmatter. A typed field would make yaml.Unmarshal fail the WHOLE block
+// frontmatter. A typed field would make decodeFrontmatter fail the WHOLE block
 // over one key's shape, discarding the file's other entities with it; a
 // yaml.Node defers each key to a resolver that confines and reports the loss.
 type subagentFrontmatter struct {
@@ -38,6 +39,52 @@ type subagentFrontmatter struct {
 	MCPServers yaml.Node `yaml:"mcpServers"`
 	// Hooks resolves to the hookGroup shape settings.go decodes from JSON.
 	Hooks yaml.Node `yaml:"hooks"`
+}
+
+// decodeFrontmatter charges a block whose aliases expand past room the nodes
+// it counted, and refuses one expanding past maxAliasedNodes whatever the
+// budget, before any resolver decodes them: yaml.v3 meters aliases per Decode
+// call, and the resolvers decode one item at a time.
+func decodeFrontmatter(block []byte, out any, room int) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(block, &doc); err != nil {
+		return err
+	}
+	switch n := aliasedNodes(&doc, min(room, maxAliasedNodes)); {
+	case n > room:
+		return limits.Faults(n, fmt.Errorf("aliases expand past %d nodes", room))
+	case n > maxAliasedNodes:
+		return limits.Refusal(fmt.Sprintf("aliases expand past %d nodes; not scanned", maxAliasedNodes))
+	}
+	return doc.Decode(out)
+}
+
+const maxAliasedNodes = 1 << 20
+
+func aliasedNodes(n *yaml.Node, limit int) int {
+	return countAliased(n, false, 0, limit, map[*yaml.Node]bool{})
+}
+
+func countAliased(n *yaml.Node, aliased bool, count, limit int, expanding map[*yaml.Node]bool) int {
+	if count > limit {
+		return count
+	}
+	if aliased {
+		count++
+	}
+	if n.Kind == yaml.AliasNode && n.Alias != nil {
+		if expanding[n.Alias] {
+			return count
+		}
+		expanding[n.Alias] = true
+		count = countAliased(n.Alias, true, count, limit, expanding)
+		delete(expanding, n.Alias)
+		return count
+	}
+	for _, c := range n.Content {
+		count = countAliased(c, aliased, count, limit, expanding)
+	}
+	return count
 }
 
 // splitFrontmatter splits data's leading YAML frontmatter block from its
@@ -78,9 +125,9 @@ func shellOf(raw string) string {
 	return strings.ToLower(strings.TrimSpace(raw))
 }
 
-// parseSubagentFile parses one .claude/agents/*.md file's bytes into its
-// located ir entities. Entities and a warning can be returned together.
-func parseSubagentFile(data []byte, file string, isPlugin bool) ([]ir.Entity, *adapter.Warning) {
+// parseSubagent parses one .claude/agents/*.md file's bytes into its located
+// ir entities. Entities and a warning can be returned together.
+func parseSubagent(data []byte, file string, isPlugin bool, room int) ([]ir.Entity, *adapter.Warning) {
 	block, found, terminated := splitFrontmatter(data)
 	if !found {
 		return nil, nil
@@ -90,19 +137,36 @@ func parseSubagentFile(data []byte, file string, isPlugin bool) ([]ir.Entity, *a
 	}
 
 	var fm subagentFrontmatter
-	if err := yaml.Unmarshal(block, &fm); err != nil {
+	if err := decodeFrontmatter(block, &fm, room); err != nil {
 		return nil, &adapter.Warning{File: file, Err: fmt.Errorf("frontmatter: %w", err)}
 	}
 
-	var faults keyFaults
+	faults := keyFaults{room: room}
 	entities := entitiesFromSubagent(fm, file, isPlugin, &faults)
 	return entities, faults.warning(file)
 }
 
+const maxFaultText = 64 << 10
+
 // keyFaults accumulates the keys a resolver could not decode, so one file
-// reports ONE warning and the facade's per-source tally counts it once.
+// reports ONE warning and the facade's per-source tally counts it once. Its
+// error still charges the entity budget every fault, a nested resolver's too,
+// but it keeps no text past room, where the budget refuses the file, nor once
+// its text reaches maxFaultText bytes.
 type keyFaults struct {
 	faults []string
+	count  int
+	room   int
+	text   int
+}
+
+func (k *keyFaults) full() bool {
+	return k.count > k.room || k.text >= maxFaultText
+}
+
+func (k *keyFaults) write(fault string) {
+	k.faults = append(k.faults, fault)
+	k.text += len(fault)
 }
 
 // mark flattens yaml.v3's multi-line TypeError into the one line a warning
@@ -111,18 +175,29 @@ func (k *keyFaults) mark(key string, err error) {
 	if err == nil {
 		return
 	}
+	k.count += limits.FaultCount(err)
+	if k.full() {
+		return
+	}
 	var typeErr *yaml.TypeError
 	if errors.As(err, &typeErr) {
 		err = errors.New(strings.Join(typeErr.Errors, "; "))
 	}
-	k.faults = append(k.faults, key+": "+err.Error())
+	k.write(key + ": " + err.Error())
+}
+
+func (k *keyFaults) add(fault string) {
+	k.count++
+	if !k.full() {
+		k.write(fault)
+	}
 }
 
 func (k keyFaults) err() error {
-	if len(k.faults) == 0 {
+	if k.count == 0 {
 		return nil
 	}
-	return errors.New(strings.Join(k.faults, "; "))
+	return limits.Faults(k.count, errors.New(strings.Join(k.faults, "; ")))
 }
 
 // warning renders the accumulated faults as one per-source warning. It is not
@@ -174,11 +249,11 @@ func entitiesFromSubagent(fm subagentFrontmatter, file string, isPlugin bool, fa
 	faults.mark("permissionMode", err)
 
 	if !isPlugin {
-		hooks, err := hooksFromNode(fm.Hooks)
+		hooks, err := hookGroupsFromNode(fm.Hooks, faults.room)
 		faults.mark("hooks", err)
 		entities = append(entities, hookEntities(hooks, file)...)
 
-		servers, err := mcpEntitiesFromNode(fm.MCPServers, file)
+		servers, err := mcpEntitiesFromNode(fm.MCPServers, file, faults.room)
 		faults.mark("mcpServers", err)
 		entities = append(entities, servers...)
 
@@ -193,7 +268,7 @@ func entitiesFromSubagent(fm subagentFrontmatter, file string, isPlugin bool, fa
 
 	name, err := scalarFromNode(fm.Name)
 	faults.mark("name", err)
-	tools, terr := toolsFromNode(fm.Tools)
+	tools, terr := toolsFromNode(fm.Tools, faults.room)
 	faults.mark("tools", terr)
 
 	entities = append(entities, ir.Subagent{
@@ -206,16 +281,16 @@ func entitiesFromSubagent(fm subagentFrontmatter, file string, isPlugin bool, fa
 	return entities
 }
 
-func mcpEntitiesFromNode(node yaml.Node, file string) ([]ir.Entity, error) {
+func mcpEntitiesFromNode(node yaml.Node, file string, room int) ([]ir.Entity, error) {
 	node = resolveAlias(node)
 	if nodeAbsent(node) {
 		return nil, nil
 	}
 	switch node.Kind {
 	case yaml.SequenceNode:
-		return mcpEntitiesFromSequenceNode(node, file)
+		return mcpEntitiesFromSequenceNode(node, file, room)
 	case yaml.MappingNode:
-		return mcpEntitiesFromMappingNode(node, file)
+		return mcpEntitiesFromMappingNode(node, file, room)
 	default:
 		return nil, fmt.Errorf("line %d: expected a list of server names or a mapping of server entries, found %s", node.Line, yamlFormName(node))
 	}
@@ -226,8 +301,8 @@ func mcpEntitiesFromNode(node yaml.Node, file string) ([]ir.Entity, error) {
 // string, so a Decode-based check would silently accept a non-string scalar
 // as a server name — see
 // TestParseSubagentFile_ListBadItemTypesWarnAloneSiblingsSurvive.
-func mcpEntitiesFromSequenceNode(node yaml.Node, file string) ([]ir.Entity, error) {
-	var faults keyFaults
+func mcpEntitiesFromSequenceNode(node yaml.Node, file string, room int) ([]ir.Entity, error) {
+	faults := keyFaults{room: room}
 	entities := make([]ir.Entity, 0, len(node.Content))
 	for i, itemPtr := range node.Content {
 		item := resolveAlias(*itemPtr)
@@ -257,8 +332,8 @@ func mcpEntitiesFromSequenceNode(node yaml.Node, file string) ([]ir.Entity, erro
 // mcpEntitiesFromMappingNode walks the mapping's pairs directly: Content is a
 // flat [key0, val0, ...] slice in source-document order, already deterministic
 // unlike Go map iteration, and per-entry decoding confines a bad entry.
-func mcpEntitiesFromMappingNode(node yaml.Node, file string) ([]ir.Entity, error) {
-	var faults keyFaults
+func mcpEntitiesFromMappingNode(node yaml.Node, file string, room int) ([]ir.Entity, error) {
+	faults := keyFaults{room: room}
 	entities := make([]ir.Entity, 0, len(node.Content)/2)
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		var name string
@@ -287,21 +362,21 @@ func mcpEntryEntities(name string, val yaml.Node, file, keyPrefix, label string,
 	}
 	mcpEnts, mcpWarnings := entitiesFromMCPMap(map[string]mcpjson.Entry{name: entry}, file, keyPrefix)
 	for _, w := range mcpWarnings {
-		faults.faults = append(faults.faults, label+strings.TrimPrefix(w.Err.Error(), keyPrefix+"."))
+		faults.add(label + strings.TrimPrefix(w.Err.Error(), keyPrefix+"."))
 	}
 	return mcpEnts
 }
 
 // toolsFromNode reads tools in either spelling the schema and real agent
 // files use. A shape or item it cannot read costs only that value.
-func toolsFromNode(node yaml.Node) ([]string, error) {
+func toolsFromNode(node yaml.Node, room int) ([]string, error) {
 	node = resolveAlias(node)
 	if nodeAbsent(node) {
 		return nil, nil
 	}
 	switch node.Kind {
 	case yaml.SequenceNode:
-		var faults keyFaults
+		faults := keyFaults{room: room}
 		out := make([]string, 0, len(node.Content))
 		for i, item := range node.Content {
 			var tool string
@@ -357,14 +432,14 @@ func scalarFromNode(node yaml.Node) (string, error) {
 	return s, nil
 }
 
-// hooksFromNode decodes a hooks node PER GROUP rather than as one
+// hookGroupsFromNode decodes a hooks node PER GROUP rather than as one
 // map[string][]hookGroup, so a group whose matcher is unreadable cannot blank
 // every well-formed sibling. A group's decode error does not skip the group:
 // yaml.v3 reports a type error only after populating the fields that did
 // decode, so the group still carries its commands, and appending it either
 // way keeps its index matching its position in the source document — the
 // index hookEntities reports in Location.Key.
-func hooksFromNode(node yaml.Node) (map[string][]hookGroup, error) {
+func hookGroupsFromNode(node yaml.Node, room int) (map[string][]hookGroup, error) {
 	node = resolveAlias(node)
 	if nodeAbsent(node) {
 		return nil, nil
@@ -372,7 +447,7 @@ func hooksFromNode(node yaml.Node) (map[string][]hookGroup, error) {
 	if node.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("line %d: expected a mapping of event names, found %s", node.Line, yamlFormName(node))
 	}
-	var faults keyFaults
+	faults := keyFaults{room: room}
 	hooks := make(map[string][]hookGroup, len(node.Content)/2)
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		var event string
@@ -422,7 +497,7 @@ func splitCSV(s string) []string {
 
 type markdownSource struct {
 	matches func(p string) bool
-	parse   func(data []byte, file string) ([]ir.Entity, *adapter.Warning)
+	parse   func(data []byte, file string, room int) ([]ir.Entity, *adapter.Warning)
 	// namesLinks stays unset where collectPayloads walks the same tree and
 	// names the link itself.
 	namesLinks bool
@@ -434,7 +509,7 @@ func isMarkdownFile(p string) bool { return path.Ext(p) == ".md" }
 // keeps a reference.md sibling in a skill directory from reading as a skill.
 func isSkillFile(p string) bool { return path.Base(p) == skillFileName }
 
-var skillSource = markdownSource{matches: isSkillFile, parse: parseSkillFile}
+var skillSource = markdownSource{matches: isSkillFile, parse: parseSkill}
 
 // walkMarkdownDir parses every file src selects independently, so one
 // malformed file warns and the walk continues; a missing dir is not an error.
@@ -472,11 +547,14 @@ func walkMarkdownDir(fsys fs.FS, dir string, src markdownSource, check func(fs.F
 			return nil
 		}
 
-		es, w := src.parse(data, p)
-		entities = append(entities, es...)
+		es, w := src.parse(data, p, limits.Of(fsys).Room())
+		var ws []adapter.Warning
 		if w != nil {
-			warnings = append(warnings, *w)
+			ws = append(ws, *w)
 		}
+		es, ws = limits.Of(fsys).Admit(p, es, ws)
+		entities = append(entities, es...)
+		warnings = append(warnings, ws...)
 		return nil
 	})
 	if walkErr != nil {
@@ -497,8 +575,8 @@ const (
 func walkAgentDir(fsys fs.FS, dir string, isPlugin bool) ([]ir.Entity, []adapter.Warning, error) {
 	return walkMarkdownDir(fsys, dir, markdownSource{
 		matches: isMarkdownFile,
-		parse: func(data []byte, file string) ([]ir.Entity, *adapter.Warning) {
-			return parseSubagentFile(data, file, isPlugin)
+		parse: func(data []byte, file string, room int) ([]ir.Entity, *adapter.Warning) {
+			return parseSubagent(data, file, isPlugin, room)
 		},
 		namesLinks: true,
 	}, fsguard.CheckRegular)
@@ -536,7 +614,7 @@ type scannableBody struct {
 // scanTarget resolves data's inline-shell-scannable body independently of
 // frontmatter validity: a malformed or absent frontmatter must never hide a
 // body command. Only an unterminated fence leaves no body boundary to scan.
-func scanTarget(data []byte, file string) scannableBody {
+func scanTarget(data []byte, file string, room int) scannableBody {
 	block, found, terminated := splitFrontmatter(data)
 
 	if found && !terminated {
@@ -547,10 +625,10 @@ func scanTarget(data []byte, file string) scannableBody {
 	}
 
 	body, firstLine := frontmatterBody(data)
-	t := scannableBody{Body: body, FirstLine: firstLine, Shell: "bash", OK: true}
+	t := scannableBody{Body: body, FirstLine: firstLine, Shell: "bash", OK: true, Faults: keyFaults{room: room}}
 
 	if found {
-		if err := yaml.Unmarshal(block, &t.Frontmatter); err != nil {
+		if err := decodeFrontmatter(block, &t.Frontmatter, room); err != nil {
 			t.Frontmatter = skillFrontmatter{}
 			t.Warning = &adapter.Warning{File: file, Err: fmt.Errorf("frontmatter: %w", err)}
 		} else {
@@ -563,10 +641,10 @@ func scanTarget(data []byte, file string) scannableBody {
 	return t
 }
 
-// parseSkillFile parses one SKILL.md file's bytes into its located ir
-// entities. A warning may accompany entities from the same file.
-func parseSkillFile(data []byte, file string) ([]ir.Entity, *adapter.Warning) {
-	t := scanTarget(data, file)
+// parseSkill parses one SKILL.md file's bytes into its located ir entities.
+// A warning may accompany entities from the same file.
+func parseSkill(data []byte, file string, room int) ([]ir.Entity, *adapter.Warning) {
+	t := scanTarget(data, file, room)
 	if !t.OK {
 		return nil, t.Warning
 	}
@@ -595,7 +673,7 @@ func firstWarning(blockWarning *adapter.Warning, faults keyFaults, file string) 
 func entitiesFromSkill(fm skillFrontmatter, file string, faults *keyFaults) []ir.Entity {
 	var entities []ir.Entity
 
-	hooks, err := hooksFromNode(fm.Hooks)
+	hooks, err := hookGroupsFromNode(fm.Hooks, faults.room)
 	faults.mark("hooks", err)
 	entities = append(entities, hookEntities(hooks, file)...)
 

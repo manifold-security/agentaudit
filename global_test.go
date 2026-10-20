@@ -397,7 +397,12 @@ type readFaultMapFS struct {
 	failPath string
 }
 
-func (f readFaultMapFS) Open(name string) (fs.File, error) { return f.m.Open(name) }
+func (f readFaultMapFS) Open(name string) (fs.File, error) {
+	if name == f.failPath {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+	return f.m.Open(name)
+}
 
 func (f readFaultMapFS) ReadFile(name string) ([]byte, error) {
 	if name == f.failPath {

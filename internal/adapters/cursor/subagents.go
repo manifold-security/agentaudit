@@ -10,6 +10,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 const projectAgentsDir = ".cursor/agents"
@@ -87,6 +88,7 @@ func projectSubagentEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 		}
 
 		es, ws := projectSubagentFrom(data, p)
+		es, ws = limits.Of(fsys).Admit(p, es, ws)
 		entities = append(entities, es...)
 		warnings = append(warnings, ws...)
 		return nil
