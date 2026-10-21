@@ -60,8 +60,11 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by opening an
-issue in this repository's Issues tab.
-All complaints will be reviewed and investigated promptly and fairly.
+issue in this repository's Issues tab that asks for a private contact, without
+details of the incident; a leader will reply with a private way to send them.
+Behavior by a community leader can be reported to GitHub through its
+**Report content** feature. All complaints will be reviewed and investigated
+promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
