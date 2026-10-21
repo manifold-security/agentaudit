@@ -46,8 +46,8 @@ func TestBinaryE2E_UnparsableAgentIsCountedInJSON(t *testing.T) {
 	writeUnparsableAgent(t, root)
 
 	stdout, stderr, code := runBinary(t, bin, root, "-o", "json")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (an unparsable agent with no findings is not an escalation)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (an unparsable agent leaves the scan incomplete)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
 	var docs []countsDocument
@@ -70,8 +70,8 @@ func TestBinaryE2E_UnparsableAgentIsCountedInJSON(t *testing.T) {
 }
 
 // The same tree on the pretty surface: the run must not read as clean, and
-// an unparsable agent no limit refused leaves the exit code at 0.
-func TestBinaryE2E_UnparsableAgentDegradesPrettyWithoutChangingExitCode(t *testing.T) {
+// an unparsable agent exits 1.
+func TestBinaryE2E_UnparsableAgentDegradesPrettyAndExitsOne(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 
 	t.Run("no findings", func(t *testing.T) {
@@ -79,8 +79,8 @@ func TestBinaryE2E_UnparsableAgentDegradesPrettyWithoutChangingExitCode(t *testi
 		writeUnparsableAgent(t, root)
 
 		stdout, stderr, code := runBinary(t, bin, root)
-		if code != 0 {
-			t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
 		if claimsACleanScan(stdout) {
 			t.Fatalf("stdout must NOT read as a clean empty scan\nstdout:\n%s", stdout)
@@ -103,7 +103,7 @@ func TestBinaryE2E_UnparsableAgentDegradesPrettyWithoutChangingExitCode(t *testi
 
 		stdout, stderr, code := runBinary(t, bin, root)
 		if code != 1 {
-			t.Fatalf("exit code = %d, want 1 (the finding sets the code, the unparsable agent does not)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+			t.Fatalf("exit code = %d, want 1 (findings present)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
 		if !strings.Contains(stdout, "· 1 unparsed source\n") {
 			t.Fatalf("stdout missing the unparsed footer suffix\nstdout:\n%s", stdout)

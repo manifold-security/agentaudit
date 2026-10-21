@@ -90,8 +90,8 @@ func TestBinaryE2E_DegradedScanIsNotReportedAsClean(t *testing.T) {
 	if ok {
 		gotCode = exitErr.ExitCode()
 	}
-	if gotCode != 0 {
-		t.Fatalf("exit code = %d, want 0 (degraded but no findings, flag absent)\nstdout:\n%s\nstderr:\n%s", gotCode, stdout.String(), stderr.String())
+	if gotCode != 1 {
+		t.Fatalf("exit code = %d, want 1 (degraded, no findings)\nstdout:\n%s\nstderr:\n%s", gotCode, stdout.String(), stderr.String())
 	}
 
 	out := stdout.String()
@@ -194,8 +194,8 @@ func TestBinaryE2E_EscapingSymlinkedAgentCountsAsUnreadable(t *testing.T) {
 	}
 
 	out, errOut := outBuf.String(), errBuf.String()
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (the escaping symlink hides the only source; no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (the escaping symlink hides the only source)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if claimsACleanScan(out) {
 		t.Fatalf("stdout must NOT read as a clean scan when a Bash-capable agent was hidden behind an escaping symlink\nstdout:\n%s", out)
@@ -215,7 +215,7 @@ func TestBinaryE2E_RootFatalStaysTwo(t *testing.T) {
 
 // --fail-on-warning is not a flag. Cobra rejects an unknown flag as a
 // usage fault, so exit 2 is the proof.
-func TestBinaryE2E_NoEscalateOnUnreadableFlag(t *testing.T) {
+func TestBinaryE2E_FailOnWarningIsNotAFlag(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 	assertBinaryExitCode(t, bin, 2, "--fail-on-warning", ".")
 }

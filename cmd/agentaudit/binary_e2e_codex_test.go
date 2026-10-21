@@ -223,16 +223,16 @@ func TestBinaryE2E_CodexUnattendedProjectReachesTheRealBinary(t *testing.T) {
 }
 
 // A document the decoder stopped on leaves the scan with nothing to report,
-// and that clean exit is exactly why stderr and the report both have to name
-// the source: a silent zero here is a clean bill of health over a config
-// nothing read.
+// so stderr and the report have to name the source and the exit code has to
+// fail, or the run reads as a clean bill of health over a config nothing
+// parsed.
 func TestBinaryE2E_CodexMalformedConfigIsNamedRatherThanSilentlyClean(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 	tree := resolveFixture(t, codexMalformedFixture)
 
 	stdout, stderr, code := runBinary(t, bin, tree)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (nothing parsed into a finding)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (the malformed config leaves the scan incomplete)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stderr, ".codex/config.toml") {
 		t.Errorf("binary stderr does not name the source it could not parse\nstderr:\n%s", stderr)

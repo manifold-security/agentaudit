@@ -167,7 +167,7 @@ func TestRun_LimitHintNamesTheFlagsWhoseLimitRefused(t *testing.T) {
 		}, []string{"--max-file-size", "30000"}, 1, fileSizeHint},
 		{"depth alone", fstest.MapFS{".claude/settings.json": {Data: deep}}, nil, 1, ""},
 		{"alias ceiling alone", aliasAgent, []string{"--max-entities", "0"}, 1, ""},
-		{"malformed", fstest.MapFS{".claude/settings.json": {Data: []byte("{not valid json")}}, nil, 0, ""},
+		{"malformed", fstest.MapFS{".claude/settings.json": {Data: []byte("{not valid json")}}, nil, 1, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, stderr, code := runOverTree(t, tc.tree, slices.Concat(tc.args, []string{"tgt"})...)

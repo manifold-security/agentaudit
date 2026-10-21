@@ -105,8 +105,8 @@ func TestBinaryE2E_AbsoluteOutOfRootSymlinkedClaudeStillDegrades(t *testing.T) {
 
 	out, errOut, code := runTarget(t, bin, root)
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (the out-of-root link degrades the scan without escalating it)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (the out-of-root link leaves the scan incomplete)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if strings.Contains(out, "outside.sh") {
 		t.Fatalf("stdout names the out-of-tree hook command, want it never surfaced\nstdout:\n%s", out)

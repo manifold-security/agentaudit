@@ -178,3 +178,40 @@ func TestRun_Recursive_DanglingSymlinkConjuresNoContainerEntry(t *testing.T) {
 		t.Fatalf("stdout = %q, want no SCAN INCOMPLETE conjured by a dangling symlink", out)
 	}
 }
+
+// In process, over the real scan of an in-memory tree, an unparsable nested
+// project still fails a -r run whose first block is clean.
+func TestRun_Recursive_DegradedOnlyInLastProjectExitsOne(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		nested     string
+		want       int
+		incomplete bool
+	}{
+		{"unparsable nested project", `{`, 1, true},
+		{"clean nested project", `{}`, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withOpenTarget(t, map[string]fs.FS{"container": fstest.MapFS{
+				".mcp.json":     &fstest.MapFile{Data: []byte(`{}`)},
+				"sub/.mcp.json": &fstest.MapFile{Data: []byte(tc.nested)},
+			}})
+
+			var stdout, stderr bytes.Buffer
+			if got := run([]string{"-r", "container"}, &stdout, &stderr); got != tc.want {
+				t.Fatalf("run() = %d, want %d\nstdout: %s\nstderr: %s", got, tc.want, stdout.String(), stderr.String())
+			}
+			out := stdout.String()
+			subIdx := strings.Index(out, "agentaudit · container/sub")
+			if subIdx == -1 {
+				t.Fatalf("stdout = %q, want a block headed by container/sub", out)
+			}
+			if strings.Contains(out[:subIdx], "SCAN INCOMPLETE") {
+				t.Fatalf("stdout = %q, want the container's block, rendered before sub's, complete", out)
+			}
+			if got := strings.Contains(out[subIdx:], "SCAN INCOMPLETE: 1 source could not be parsed"); got != tc.incomplete {
+				t.Fatalf("sub's block reports the unparsed source = %v, want %v\nstdout: %q", got, tc.incomplete, out)
+			}
+		})
+	}
+}

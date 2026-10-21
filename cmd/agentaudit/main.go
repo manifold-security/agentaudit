@@ -142,11 +142,13 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 			}
 
 			var emptyLine string
+			degraded := false
 			if globalConfig {
 				gb, unreadable, err := globalBlocks(registry.Adapters(), warn, limitOpts...)
 				if err != nil {
 					return err
 				}
+				degraded = unreadable
 				blocks = append(blocks, gb...)
 				if len(blocks) == 0 {
 					emptyLine = emptyGlobalLine(unreadable)
@@ -188,8 +190,11 @@ func newRootCmd(stdout, stderr io.Writer, code *int) *cobra.Command {
 				if b.Report.HasFindings() {
 					hasFindings = true
 				}
+				if report.Degraded(b.Report.Counts()) {
+					degraded = true
+				}
 			}
-			if hasFindings || limited {
+			if hasFindings || limited || degraded {
 				*code = 1
 			} else {
 				*code = 0
@@ -215,8 +220,8 @@ type block struct {
 	Report finding.Report
 }
 
-// run translates the outcome into an exit code: 0 clean, 1 findings present,
-// a file a limit refused or a file a URL fetch withheld, 2 usage or runtime
+// run translates the outcome into an exit code: 0 a complete scan with no
+// findings, 1 findings present or a scan left incomplete, 2 usage or runtime
 // error.
 func run(args []string, stdout, stderr io.Writer) int {
 	var code int

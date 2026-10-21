@@ -79,7 +79,7 @@ A repository whose agent configuration yields nothing prints `no capabilities fo
 
 Under `--global-config`, a home directory with no agent configuration prints `no user-level agent config found`, and one that exists but cannot be opened prints `user-level agent config could not be read`.
 
-Exit codes: `0` no findings, `1` at least one finding, a file a scan limit refused or a file a URL fetch withheld, `2` usage or runtime error. A refused file is named in a warning on stderr; when the limit that refused it has a flag below, a closing `hint:` line names that flag.
+Exit codes: `0` no findings and every source read, `1` at least one finding, a source the scan could not read or parse (`SCAN INCOMPLETE`), a home directory `--global-config` could not open, a file a scan limit refused or a file a URL fetch withheld, `2` usage or runtime error. A refused file is named in a warning on stderr; when the limit that refused it has a flag below, a closing `hint:` line names that flag.
 
 ## Flags
 

@@ -136,7 +136,7 @@ func TestRun_ClosesOneRootPerTarget(t *testing.T) {
 		t.Setenv("HOME", home)
 		c := withCountingOpener(t, map[string]fs.FS{
 			".":  fstest.MapFS{},
-			home: fstest.MapFS{".claude/settings.json": &fstest.MapFile{}},
+			home: fstest.MapFS{".claude/settings.json": &fstest.MapFile{Data: []byte("{}")}},
 		})
 
 		var stdout, stderr bytes.Buffer

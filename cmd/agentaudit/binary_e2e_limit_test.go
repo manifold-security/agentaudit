@@ -7,8 +7,9 @@ import (
 	"testing"
 )
 
-// The built binary applies the default file limit to a tree on disk and exits
-// 1 on its refusal; a malformed file no limit refused leaves it at 0.
+// The built binary applies the default file limit to a tree on disk: its
+// refusal exits 1 with the hint naming the flag, while a malformed file no
+// limit refused exits 1 with no hint.
 func TestBinaryE2E_ALimitRefusalExitsOne(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 
@@ -16,10 +17,10 @@ func TestBinaryE2E_ALimitRefusalExitsOne(t *testing.T) {
 		name     string
 		settings string
 		warned   string
-		want     int
+		hint     bool
 	}{
-		{"file past the default limit", "{}" + strings.Repeat(" ", 512<<10), ".claude/settings.json: over the 512 KiB limit for one file; not scanned", 1},
-		{"malformed file", "{not valid json", ".claude/settings.json: invalid character", 0},
+		{"file past the default limit", "{}" + strings.Repeat(" ", 512<<10), ".claude/settings.json: over the 512 KiB limit for one file; not scanned", true},
+		{"malformed file", "{not valid json", ".claude/settings.json: invalid character", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -31,11 +32,14 @@ func TestBinaryE2E_ALimitRefusalExitsOne(t *testing.T) {
 			}
 
 			stdout, stderr, code := runBinary(t, bin, root)
-			if code != tc.want {
-				t.Errorf("exit code = %d, want %d\nstdout:\n%s\nstderr:\n%s", code, tc.want, stdout, stderr)
+			if code != 1 {
+				t.Errorf("exit code = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 			}
 			if !strings.Contains(stderr, tc.warned) {
 				t.Errorf("stderr = %q, want a warning naming %q", stderr, tc.warned)
+			}
+			if got := strings.Contains(stderr, "hint: raise --max-file-size"); got != tc.hint {
+				t.Errorf("hint naming --max-file-size = %v, want %v\nstderr:\n%s", got, tc.hint, stderr)
 			}
 		})
 	}

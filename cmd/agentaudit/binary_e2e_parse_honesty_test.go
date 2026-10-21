@@ -103,8 +103,8 @@ func TestBinaryE2E_MCPNonObjectFixtureWarnsAsUnparsedNotUnreadable(t *testing.T)
 	}
 
 	stdout, stderr, code := runBinary(t, bin, dir)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (degraded parse, no findings, flag absent)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (degraded parse, no findings)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stderr, "mcpServers: expected an object of server entries, found an array") {
 		t.Fatalf("stderr missing the configuration-vocabulary warning\nstderr:\n%s", stderr)

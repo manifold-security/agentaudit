@@ -1039,8 +1039,8 @@ func TestRun_GlobalConfig_UnreadableClaudeJSONRendersScanIncomplete(t *testing.T
 	})
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"--global-config"}, &stdout, &stderr); got != 0 {
-		t.Fatalf("run() = %d, want 0 (a degraded home, no findings)\nstdout:%s\nstderr:%s", got, stdout.String(), stderr.String())
+	if got := run([]string{"--global-config"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("run() = %d, want 1 (a degraded home, no findings)\nstdout:%s\nstderr:%s", got, stdout.String(), stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "agentaudit · "+home) {
@@ -1099,10 +1099,11 @@ func TestRun_GlobalConfig_UnopenableHomeIsNotReportedAsAbsent(t *testing.T) {
 		name    string
 		openErr error
 		want    string
+		code    int
 	}{
-		{"permission denied", fs.ErrPermission, "user-level agent config could not be read\n"},
-		{"not a directory", syscall.ENOTDIR, "user-level agent config could not be read\n"},
-		{"does not exist", fs.ErrNotExist, "no user-level agent config found\n"},
+		{"permission denied", fs.ErrPermission, "user-level agent config could not be read\n", 1},
+		{"not a directory", syscall.ENOTDIR, "user-level agent config could not be read\n", 1},
+		{"does not exist", fs.ErrNotExist, "no user-level agent config found\n", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1112,8 +1113,8 @@ func TestRun_GlobalConfig_UnopenableHomeIsNotReportedAsAbsent(t *testing.T) {
 			withOpenError(t, &fs.PathError{Op: "open", Path: home, Err: tt.openErr})
 
 			var stdout, stderr bytes.Buffer
-			if got := run([]string{"--global-config", "-O", "md"}, &stdout, &stderr); got != 0 {
-				t.Fatalf("run() = %d, want 0\nstdout:%s\nstderr:%s", got, stdout.String(), stderr.String())
+			if got := run([]string{"--global-config", "-O", "md"}, &stdout, &stderr); got != tt.code {
+				t.Fatalf("run() = %d, want %d\nstdout:%s\nstderr:%s", got, tt.code, stdout.String(), stderr.String())
 			}
 			if got := stdout.String(); got != tt.want {
 				t.Fatalf("stdout = %q, want %q", got, tt.want)
@@ -1130,8 +1131,8 @@ func TestRun_GlobalConfig_UnopenableHomeIsNotReportedAsAbsent(t *testing.T) {
 			}
 
 			var jsonOut, jsonErr bytes.Buffer
-			if got := run([]string{"--global-config", "-o", "json"}, &jsonOut, &jsonErr); got != 0 {
-				t.Fatalf("run(-o json) = %d, want 0\nstderr:%s", got, jsonErr.String())
+			if got := run([]string{"--global-config", "-o", "json"}, &jsonOut, &jsonErr); got != tt.code {
+				t.Fatalf("run(-o json) = %d, want %d\nstderr:%s", got, tt.code, jsonErr.String())
 			}
 			if got, want := jsonOut.String(), "[]\n"; got != want {
 				t.Fatalf("json stdout = %q, want %q", got, want)

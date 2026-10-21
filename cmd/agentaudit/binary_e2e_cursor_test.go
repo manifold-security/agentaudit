@@ -952,8 +952,8 @@ func TestBinaryE2E_CursorPermissionsCommentBlamesTheScanner(t *testing.T) {
 	}
 
 	stdout, stderr, code := runBinary(t, bin, project)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (no findings)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (an incomplete scan, no findings)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "SCAN INCOMPLETE") {
 		t.Errorf("a file nothing could read is reported as clean\nstdout:\n%s", stdout)

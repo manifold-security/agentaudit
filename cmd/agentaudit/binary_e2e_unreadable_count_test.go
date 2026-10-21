@@ -23,8 +23,8 @@ func TestBinaryE2E_OneEscapingSourceCountsAsOneUnreadableSource(t *testing.T) {
 	}
 
 	stdout, stderr, code := runBinary(t, bin, root, "-o", "json")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (an escaping source with no findings is not an escalation)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (an escaping source leaves the scan incomplete)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
 	var docs []countsDocument

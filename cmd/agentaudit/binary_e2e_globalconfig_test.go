@@ -171,8 +171,8 @@ func TestBinaryE2E_GlobalConfig_EscapingSymlinkDegradesWithoutASilentClean(t *te
 
 	out, _, code := runWithHome(t, bin, project, home, "--global-config")
 
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0\nstdout:\n%s", code, out)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (an incomplete scan)\nstdout:\n%s", code, out)
 	}
 	if !strings.Contains(out, "SCAN INCOMPLETE") {
 		t.Fatalf("stdout does not contain SCAN INCOMPLETE for an escaping symlink\nstdout:\n%s", out)
@@ -313,8 +313,8 @@ func TestBinaryE2E_GlobalConfig_ClaudeJSONAsAFIFOCompletesUnderADeadline(t *test
 	project := t.TempDir()
 
 	out, errOut, code := runWithHome(t, bin, project, home, "--global-config")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if !strings.Contains(out, "SCAN INCOMPLETE") {
 		t.Fatalf("stdout = %q, want the global block to render SCAN INCOMPLETE", out)
@@ -334,8 +334,8 @@ func TestBinaryE2E_GlobalConfig_ClaudeJSONAsADirectoryDegradesWithoutASilentClea
 	project := t.TempDir()
 
 	out, errOut, code := runWithHome(t, bin, project, home, "--global-config")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if !strings.Contains(out, "SCAN INCOMPLETE") {
 		t.Fatalf("stdout = %q, want the global block to render SCAN INCOMPLETE", out)
@@ -368,8 +368,8 @@ func TestBinaryE2E_GlobalConfig_ClaudeJSONAsASymlinkEscapingHomeNeverLeaksTheTar
 	project := t.TempDir()
 
 	out, errOut, code := runWithHome(t, bin, project, home, "--global-config")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (a degraded global block, no findings)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if strings.Contains(out, "leaked") {
 		t.Fatalf("stdout = %q, want the symlink target's content never surfaced", out)
@@ -488,17 +488,18 @@ func TestBinaryE2E_GlobalConfig_EmptyRunNamesWhetherTheHomeCouldBeRead(t *testin
 		name string
 		home func(t *testing.T) string
 		want string
+		code int
 	}{
 		{"a home that does not exist", func(t *testing.T) string {
 			return filepath.Join(t.TempDir(), "missing")
-		}, "no user-level agent config found\n"},
+		}, "no user-level agent config found\n", 0},
 		{"a home that is a regular file", func(t *testing.T) string {
 			home := filepath.Join(t.TempDir(), "home")
 			if err := os.WriteFile(home, []byte("not a directory"), 0o644); err != nil {
 				t.Fatalf("write %s: %v", home, err)
 			}
 			return home
-		}, "user-level agent config could not be read\n"},
+		}, "user-level agent config could not be read\n", 1},
 		{"a home with mode 000", func(t *testing.T) string {
 			if os.Geteuid() == 0 {
 				t.Skip("root ignores directory permissions")
@@ -510,14 +511,14 @@ func TestBinaryE2E_GlobalConfig_EmptyRunNamesWhetherTheHomeCouldBeRead(t *testin
 			}
 			t.Cleanup(func() { os.Chmod(home, 0o755) })
 			return home
-		}, "user-level agent config could not be read\n"},
+		}, "user-level agent config could not be read\n", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			home := tt.home(t)
 			out, errOut, code := runWithHome(t, bin, t.TempDir(), home, "--global-config")
-			if code != 0 {
-				t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+			if code != tt.code {
+				t.Fatalf("exit code = %d, want %d\nstdout:\n%s\nstderr:\n%s", code, tt.code, out, errOut)
 			}
 			if out != tt.want {
 				t.Fatalf("stdout = %q, want %q", out, tt.want)

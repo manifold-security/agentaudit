@@ -36,6 +36,17 @@ func findingTargetFS() fstest.MapFS {
 	}
 }
 
+func unreadableTargetFS() degradedTargetFS {
+	return degradedTargetFS{
+		m:       fstest.MapFS{"broken/file.txt": &fstest.MapFile{Data: []byte("x")}},
+		failDir: "broken",
+	}
+}
+
+func unparsedTargetFS() fstest.MapFS {
+	return fstest.MapFS{".mcp.json": &fstest.MapFile{Data: []byte(`{`)}}
+}
+
 func TestRun_MultiTarget_ExitCodeAggregatesAcrossTargets(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -45,6 +56,8 @@ func TestRun_MultiTarget_ExitCodeAggregatesAcrossTargets(t *testing.T) {
 		{"both targets clean", map[string]fs.FS{"a": cleanTargetFS(), "b": cleanTargetFS()}, 0},
 		{"findings only in the second target", map[string]fs.FS{"a": cleanTargetFS(), "b": findingTargetFS()}, 1},
 		{"findings only in the first target", map[string]fs.FS{"a": findingTargetFS(), "b": cleanTargetFS()}, 1},
+		{"unreadable only in the second target", map[string]fs.FS{"a": cleanTargetFS(), "b": unreadableTargetFS()}, 1},
+		{"unparsed only in the second target", map[string]fs.FS{"a": cleanTargetFS(), "b": unparsedTargetFS()}, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -117,18 +130,14 @@ func (f degradedTargetFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return f.m.ReadDir(name)
 }
 
-// Degradation aggregates per block, never globally, and a read fault beside
-// no finding in either block leaves the exit code at 0.
-func TestRun_MultiTarget_DegradedPlusCleanNoFindingsExitsZero(t *testing.T) {
-	degraded := degradedTargetFS{
-		m:       fstest.MapFS{"broken/file.txt": &fstest.MapFile{Data: []byte("x")}},
-		failDir: "broken",
-	}
-	withOpenTarget(t, map[string]fs.FS{"a": degraded, "b": cleanTargetFS()})
+// A read fault degrades its own block and not its neighbour's, and with no
+// finding in either block it still exits 1.
+func TestRun_MultiTarget_DegradedPlusCleanNoFindingsExitsOne(t *testing.T) {
+	withOpenTarget(t, map[string]fs.FS{"a": unreadableTargetFS(), "b": cleanTargetFS()})
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"a", "--scan-dir", "b"}, &stdout, &stderr); got != 0 {
-		t.Fatalf("run() = %d, want 0\nstdout: %s\nstderr: %s", got, stdout.String(), stderr.String())
+	if got := run([]string{"a", "--scan-dir", "b"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("run() = %d, want 1\nstdout: %s\nstderr: %s", got, stdout.String(), stderr.String())
 	}
 
 	out := stdout.String()

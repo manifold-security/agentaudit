@@ -11,7 +11,8 @@ import (
 )
 
 // A container holding more in-tree symlinked aliases than discovery's
-// resolution budget allows must degrade honestly rather than escalate.
+// resolution budget allows must degrade honestly, as SCAN INCOMPLETE with an
+// unreadable source, and the run is not an error.
 func TestBinaryE2E_SymlinkResolutionBudgetExhaustionDegradesHonestly(t *testing.T) {
 	bin := buildAgentauditBinary(t)
 
@@ -47,7 +48,7 @@ func TestBinaryE2E_SymlinkResolutionBudgetExhaustionDegradesHonestly(t *testing.
 
 	out, errOut := stdout.String(), stderr.String()
 	if code != 1 {
-		t.Fatalf("exit code = %d, want 1 (findings from the projects reached within budget), not escalated by the exhaustion\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
+		t.Fatalf("exit code = %d, want 1 (findings and an incomplete scan, not a runtime error)\nstdout:\n%s\nstderr:\n%s", code, out, errOut)
 	}
 	if !strings.Contains(out, "SCAN INCOMPLETE") {
 		t.Fatalf("stdout must contain \"SCAN INCOMPLETE\" once the budget exhausts\nstdout:\n%s", out)

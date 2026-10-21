@@ -46,8 +46,12 @@ func emptyReportScan(fs.FS, func(error)) (finding.Report, error) {
 	return finding.NewReport(nil), nil
 }
 
-func degradedEmptyReportScan(fs.FS, func(error)) (finding.Report, error) {
+func unreadableEmptyReportScan(fs.FS, func(error)) (finding.Report, error) {
 	return finding.NewReport(nil).WithUnreadableSources(1), nil
+}
+
+func unparsedEmptyReportScan(fs.FS, func(error)) (finding.Report, error) {
+	return finding.NewReport(nil).WithUnparsedSources(1), nil
 }
 
 func findingsReportScan(fs.FS, func(error)) (finding.Report, error) {
@@ -75,7 +79,8 @@ func TestRun_ExitCodes(t *testing.T) {
 		{name: "findings present exits 1", args: nil, scanFunc: findingsReportScan, want: 1},
 		{name: "nonexistent path exits 2", args: []string{"/does/not/exist/agentaudit-test-fixture"}, want: 2},
 		{name: "malformed args (too many positional) exits 2", args: []string{"one", "two"}, want: 2},
-		{name: "degraded scan with no findings exits 0", args: nil, scanFunc: degradedEmptyReportScan, want: 0},
+		{name: "unreadable source with no findings exits 1", args: nil, scanFunc: unreadableEmptyReportScan, want: 1},
+		{name: "unparsed source with no findings exits 1", args: nil, scanFunc: unparsedEmptyReportScan, want: 1},
 	}
 
 	for _, tt := range tests {

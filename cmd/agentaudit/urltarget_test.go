@@ -366,6 +366,67 @@ func TestRun_AWithheldFileFailsAURLScan(t *testing.T) {
 	}
 }
 
+// A withheld file fails a URL scan whatever the scan counted: these stub
+// scans read it and report no unread or unparsed source, so the withheld path
+// alone sets the code. The same read of the held tree is the arm that passes.
+func TestRun_AWithheldFileExitsOneWithNothingCounted(t *testing.T) {
+	const settings = ".claude/settings.json"
+	tree := fstest.MapFS{settings: {Data: []byte("{}")}}
+	for _, recursive := range []bool{false, true} {
+		args := []string{testURL}
+		if recursive {
+			args = []string{"-r", testURL}
+		}
+		for _, tc := range []struct {
+			name     string
+			withheld []string
+			code     int
+		}{
+			{"withheld", []string{settings}, 1},
+			{"held", nil, 0},
+		} {
+			t.Run(strings.Join(args, " ")+" "+tc.name, func(t *testing.T) {
+				withFetch(t, serveTree(t, tree, tc.withheld...))
+				withScan(t, func(fsys fs.FS, _ func(error)) (finding.Report, error) {
+					_, _ = fs.ReadFile(fsys, settings)
+					return finding.NewReport(nil), nil
+				})
+				withScanRecursive(t, func(fsys fs.FS, _ func(error)) ([]agentaudit.ProjectReport, error) {
+					_, _ = fs.ReadFile(fsys, settings)
+					return []agentaudit.ProjectReport{{Path: ".", Report: finding.NewReport(nil)}}, nil
+				})
+
+				stdout, stderr, code := runArgs(args...)
+				if code != tc.code {
+					t.Fatalf("run(%v) = %d, want %d\nstdout: %s\nstderr: %s", args, code, tc.code, stdout, stderr)
+				}
+				if strings.Contains(stdout, "SCAN INCOMPLETE") {
+					t.Errorf("stdout = %q, want no SCAN INCOMPLETE from a report that counts nothing", stdout)
+				}
+			})
+		}
+	}
+}
+
+// A held file the scan could not parse fails a URL scan with nothing
+// withheld; the held clean tree of TestRun_AWithheldFileFailsAURLScan is the
+// arm that passes.
+func TestRun_AnUnparsableHeldFileFailsAURLScan(t *testing.T) {
+	tree := fstest.MapFS{".mcp.json": {Data: []byte("{")}}
+	for _, args := range [][]string{{testURL}, {"-r", testURL}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			withFetch(t, serveTree(t, tree))
+			stdout, stderr, code := runArgs(args...)
+			if code != 1 {
+				t.Fatalf("run(%v) = %d, want 1\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "SCAN INCOMPLETE: 1 source could not be parsed") {
+				t.Errorf("stdout = %q, want the unparsed source reported", stdout)
+			}
+		})
+	}
+}
+
 func TestRun_BoundsTheFetchByFetchTimeout(t *testing.T) {
 	original := fetchTimeout
 	fetchTimeout = 37 * time.Minute

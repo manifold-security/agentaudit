@@ -76,8 +76,8 @@ func TestBinaryE2E_UnreadableFrontmatterKeyDegradesInsteadOfReadingClean(t *test
 	writeAgentFile(t, root, "a.md", unreadableHookCommandAgent)
 
 	stdout, stderr, code := runBinary(t, bin, root)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (an undecodable key leaves the exit code alone)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1 (an undecodable key leaves the scan incomplete)\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if claimsACleanScan(stdout) {
 		t.Errorf("stdout must NOT read as a clean empty scan\nstdout:\n%s", stdout)
@@ -109,8 +109,8 @@ func TestBinaryE2E_TwoUnreadableKeysInOneFileCountOneUnparsedSource(t *testing.T
 	writeAgentFile(t, root, "a.md", twoUnreadableKeysAgent)
 
 	stdout, stderr, code := runBinary(t, bin, root)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "· 1 unparsed source\n") {
 		t.Errorf("stdout must count the file once, not once per key\nstdout:\n%s", stdout)

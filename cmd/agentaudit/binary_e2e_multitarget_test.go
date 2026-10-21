@@ -57,6 +57,25 @@ func TestBinaryE2E_MultiTarget_FindingsOnlyInFirstTargetExits1(t *testing.T) {
 	}
 }
 
+// An incomplete scan only in the last target still yields exit 1, guarding
+// the exit fold against a mutation that inspects only the first block.
+func TestBinaryE2E_MultiTarget_DegradedOnlyInLastTargetExits1(t *testing.T) {
+	bin := buildAgentauditBinary(t)
+	clean := cleanTargetDir(t)
+	degraded := t.TempDir()
+	if err := os.WriteFile(filepath.Join(degraded, ".mcp.json"), []byte(`{`), 0o644); err != nil {
+		t.Fatalf("write .mcp.json: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, bin, ".", clean, "--scan-dir", degraded)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "SCAN INCOMPLETE: 1 source could not be parsed") {
+		t.Fatalf("stdout must report the unparsed source of the last target\nstdout:\n%s", stdout)
+	}
+}
+
 // a project three directory levels beneath a container is found under -r and
 // its finding moves the exit code: enumeration has no depth bound.
 func TestBinaryE2E_MultiTarget_RecursiveFindsProjectThreeLevelsDeepExits1(t *testing.T) {
@@ -169,17 +188,16 @@ func TestBinaryE2E_MultiTarget_FindingsOnlyInSecondTargetExits1(t *testing.T) {
 	}
 }
 
-// A permission fault with no finding leaves the exit code at 0, even beside a
-// clean target.
-func TestBinaryE2E_MultiTarget_DegradedPlusCleanNoFindingsExits0(t *testing.T) {
+// A permission fault with no finding exits 1, even beside a clean target.
+func TestBinaryE2E_MultiTarget_DegradedPlusCleanNoFindingsExits1(t *testing.T) {
 	skipUnlessPermissionBitsEnforced(t)
 	bin := buildAgentauditBinary(t)
 	degraded := degradedFixture(t, `{}`)
 	clean := cleanTargetDir(t)
 
 	stdout, stderr, code := runBinary(t, bin, ".", degraded, "--scan-dir", clean)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "SCAN INCOMPLETE") {
 		t.Fatalf("stdout must report SCAN INCOMPLETE for the degraded target\nstdout:\n%s", stdout)
