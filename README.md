@@ -79,19 +79,19 @@ A repository whose agent configuration yields nothing prints `no capabilities fo
 
 Under `--global-config`, a home directory with no agent configuration prints `no user-level agent config found`, and one that exists but cannot be opened prints `user-level agent config could not be read`.
 
-Exit codes: `0` no findings, `1` at least one finding or a file a scan limit refused, `2` usage or runtime error. A refused file is named in a warning on stderr; when the limit that refused it has a flag below, a closing `hint:` line names that flag.
+Exit codes: `0` no findings, `1` at least one finding, a file a scan limit refused or a file a URL fetch withheld, `2` usage or runtime error. A refused file is named in a warning on stderr; when the limit that refused it has a flag below, a closing `hint:` line names that flag.
 
 ## Flags
 
-Usage: `agentaudit [PATH]`. `PATH` defaults to the current directory.
+Usage: `agentaudit [PATH | URL]`. `PATH` defaults to the current directory. `URL` is `https://github.com/<owner>/<repo>[/tree/<ref>[/<path>]]`, fetched anonymously over the network and held in memory; the fetch has a 120 s limit, and the report header reads `github.com/<owner>/<repo>[/tree/<ref>[/<path>]]@<commit>`, the commit cut to 12 characters.
 
 | Flag | Behaviour |
 |---|---|
 | `-v, --explain` | Adds each finding's rule id, message and reference link. Pretty output only. |
 | `-o, --output pretty\|json` | Format printed to stdout. Default `pretty`. |
 | `-O, --output-file json\|md\|all` | Also writes `agentaudit-report.json`, `agentaudit-report.md`, or both, to the current directory. Nothing is written without this flag. |
-| `-r, --recursive` | Scans every project beneath `PATH`, one report block per project. |
-| `--scan-dir <path>` | Adds another target, scanned alongside `PATH`. Repeatable. |
+| `-r, --recursive` | Scans every project beneath `PATH` or `URL`, one report block per project. |
+| `--scan-dir <path>` | Adds another directory, scanned alongside `PATH`; a URL here exits 2. Repeatable. |
 | `--global-config` | Scans only each agent's user-level configuration in your home directory. Cannot be combined with `PATH`, `--scan-dir` or `-r`. |
 | `--max-file-size <bytes>` | Refuses a file larger than this, in bytes or with a `KiB`, `MiB` or `GiB` suffix (`2MiB`). Default `512KiB`; `0` turns the limit off. Raise it when a legitimate file is refused, such as a large `~/.claude.json` under `--global-config`. |
 | `--max-read-bytes <bytes>` | Refuses reads past this total in one scan, in bytes or with a `KiB`, `MiB` or `GiB` suffix. Default `64MiB`; `0` turns the limit off. |

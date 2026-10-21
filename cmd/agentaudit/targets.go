@@ -9,16 +9,19 @@ import (
 	"github.com/manifold-security/agentaudit"
 )
 
-// resolveTargets unions the positional path with scanDirs, collapsing every
-// spelling of the same path to its filepath.Clean form. An empty value is a
-// usage fault: filepath.Clean("") is ".", so accepting one would scan the
+// resolveTargets unions the positional target with scanDirs, keeping one
+// entry per filepath.Clean form of a path and a URL as given. An empty value
+// is a usage fault: filepath.Clean("") is ".", so accepting one would scan the
 // current directory under the guise of a named target.
 func resolveTargets(positional, scanDirs []string) ([]string, error) {
 	var ordered []string
 	seen := make(map[string]struct{})
 
 	add := func(p string) {
-		clean := filepath.Clean(p)
+		clean := p
+		if !isURL(p) {
+			clean = filepath.Clean(p)
+		}
 		if _, dup := seen[clean]; dup {
 			return
 		}
@@ -34,6 +37,9 @@ func resolveTargets(positional, scanDirs []string) ([]string, error) {
 	for _, p := range scanDirs {
 		if p == "" {
 			return nil, fmt.Errorf("agentaudit: --scan-dir value must not be empty")
+		}
+		if isURL(p) {
+			return nil, fmt.Errorf("agentaudit: --scan-dir takes a directory")
 		}
 	}
 
@@ -76,28 +82,31 @@ func displayPath(target, proj string) string {
 
 // targetBlocks holds the root open only for its own call, so scanning many
 // targets never accumulates descriptors (TestRun_ClosesOneRootPerTarget).
-func targetBlocks(target string, recursive bool, warn func(error), opts ...agentaudit.Option) ([]block, error) {
+func targetBlocks(target string, recursive bool, warn func(error), opts ...agentaudit.Option) (blocks []block, withheld bool, err error) {
+	if isURL(target) {
+		return urlBlocks(target, recursive, warn, opts)
+	}
 	fsys, closeRoot, err := openTarget(target)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = closeRoot() }()
 
 	if !recursive {
 		rep, err := scan(fsys, warn, opts...)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return []block{{Path: displayPath(target, "."), Report: rep}}, nil
+		return []block{{Path: displayPath(target, "."), Report: rep}}, false, nil
 	}
 
 	projects, err := scanRecursive(fsys, warn, opts...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	blocks := make([]block, len(projects))
+	blocks = make([]block, len(projects))
 	for i, p := range projects {
 		blocks[i] = block{Path: displayPath(target, p.Path), Report: p.Report}
 	}
-	return blocks, nil
+	return blocks, false, nil
 }

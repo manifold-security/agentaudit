@@ -23,6 +23,7 @@ func runOverTree(t *testing.T, tree fs.FS, args ...string) (stdout, stderr strin
 	const home = "/agentaudit-test-home"
 	t.Setenv("HOME", home)
 	withCountingOpener(t, map[string]fs.FS{"tgt": tree, home: tree})
+	withFetch(t, serveTree(t, tree))
 	var out, errOut bytes.Buffer
 	code = run(args, &out, &errOut)
 	return out.String(), errOut.String(), code
@@ -39,6 +40,8 @@ func TestRun_EachLimitFlagReachesEveryScanPath(t *testing.T) {
 		{"plain", []string{"tgt"}},
 		{"recursive", []string{"-r", "tgt"}},
 		{"global", []string{"--global-config"}},
+		{"url", []string{testURL}},
+		{"url recursive", []string{"-r", testURL}},
 	} {
 		for _, limit := range []struct {
 			flag, value, refusal string
@@ -81,14 +84,16 @@ func TestRun_ZeroTurnsEachLimitFlagOff(t *testing.T) {
 		{"--max-read-bytes", overBudget, "past the scan's 64 MiB read budget", 0},
 		{"--max-entities", fstest.MapFS{".claude/settings.json": {Data: []byte(overEntities)}}, "would take the scan past 10000 entities", 1},
 	} {
-		t.Run(tc.flag, func(t *testing.T) {
-			if _, stderr, _ := runOverTree(t, tc.tree, "tgt"); !strings.Contains(stderr, tc.refusal) {
-				t.Fatalf("premise: stderr = %q, want the default to refuse with %q", stderr, tc.refusal)
-			}
-			if _, stderr, code := runOverTree(t, tc.tree, tc.flag, "0", "tgt"); code != tc.code || strings.Contains(stderr, "not scanned") {
-				t.Errorf("exit code = %d, stderr = %q, want %d and no refusal with %s 0", code, stderr, tc.code, tc.flag)
-			}
-		})
+		for _, target := range [][]string{{"tgt"}, {testURL}, {"-r", testURL}} {
+			t.Run(tc.flag+" "+strings.Join(target, " "), func(t *testing.T) {
+				if _, stderr, _ := runOverTree(t, tc.tree, target...); !strings.Contains(stderr, tc.refusal) {
+					t.Fatalf("premise: stderr = %q, want the default to refuse with %q", stderr, tc.refusal)
+				}
+				if _, stderr, code := runOverTree(t, tc.tree, slices.Concat([]string{tc.flag, "0"}, target)...); code != tc.code || strings.Contains(stderr, "not scanned") {
+					t.Errorf("exit code = %d, stderr = %q, want %d and no refusal with %s 0", code, stderr, tc.code, tc.flag)
+				}
+			})
+		}
 	}
 }
 
@@ -186,6 +191,13 @@ func TestRun_LimitHintNamesTheFlagsWhoseLimitRefused(t *testing.T) {
 			}
 		})
 	}
+	t.Run("file size by URL", func(t *testing.T) {
+		_, stderr, code := runOverTree(t, settings, "--max-file-size", "8", testURL)
+		lines := strings.Split(strings.TrimSuffix(stderr, "\n"), "\n")
+		if code != 1 || lines[len(lines)-1] != fileSizeHint {
+			t.Errorf("exit code = %d, last stderr line = %q, want 1 and %q", code, lines[len(lines)-1], fileSizeHint)
+		}
+	})
 }
 
 // A report file that fails to write after a refusal still leaves the hint
