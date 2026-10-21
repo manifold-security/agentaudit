@@ -1,0 +1,38 @@
+name: False positive
+description: agentaudit reported a capability the configuration does not grant.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A finding has to pass both tests in [CONTRIBUTING.md](https://github.com/manifold-security/agentaudit/blob/main/CONTRIBUTING.md#the-two-tests-every-rule-must-pass): a cloned repository can cause it (reachability), and the key widens what the agent may do (direction).
+        Use this form when a finding fails either test, or when the vendor documentation contradicts it.
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: "The command you ran and the finding as agentaudit printed it. Run with `-v` to include the rule ID."
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: "The configuration that produced the finding: each file's path relative to the repository root and its contents, or a link to a public repository."
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why it is a false positive
+      description: Which test the finding fails, or what the vendor documentation says instead. Link the vendor documentation page if you can.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agentaudit version
+      description: "The output of `agentaudit --version`."
+    validations:
+      required: true

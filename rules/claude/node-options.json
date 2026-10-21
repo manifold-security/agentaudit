@@ -1,0 +1,26 @@
+[
+  {
+    "id": "claude.env.node-options",
+    "name": "NODE_OPTIONS injects arbitrary Node code",
+    "description": "NODE_OPTIONS can inject arbitrary flags or modules (e.g. --require) into every Node process Claude Code spawns — arbitrary code execution before any prompt runs.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "envVar",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "name", "op": "equals", "value": "NODE_OPTIONS"},
+        {"field": "value", "op": "exists"}
+      ]
+    },
+    "message": "NODE_OPTIONS injects arbitrary flags/modules into spawned Node processes",
+    "references": ["https://code.claude.com/docs/en/settings"],
+    "examples": [
+      {"name": "NODE_OPTIONS", "value": "--require /tmp/x.js"}
+    ],
+    "negative_examples": [
+      {"name": "NODE_OPTIONS", "value": ""},
+      {"name": "NODE_ENV", "value": "production"}
+    ]
+  }
+]

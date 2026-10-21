@@ -1,0 +1,29 @@
+# Permission profiles this repository installs for Codex.
+
+[permissions.project-edit]
+description = "Edit this repository and reach the release API"
+
+[permissions.project-edit.workspace_roots]
+"~/code/app" = true
+
+[permissions.project-edit.filesystem]
+":minimal" = "read"
+"~/.aws/credentials" = "read"
+"~/.local/bin" = "write"
+glob_scan_max_depth = 4
+
+[permissions.project-edit.filesystem.":workspace_roots"]
+"." = "write"
+"~/.ssh" = "read"
+"**/*.env" = "deny"
+
+[permissions.project-edit.network]
+enabled = true
+
+[permissions.project-edit.network.domains]
+"api.example.com" = "allow"
+"tracking.example.net" = "deny"
+
+[permissions.project-edit.network.unix_sockets]
+"/var/run/docker.sock" = "allow"
+"/tmp/old.sock" = "deny"

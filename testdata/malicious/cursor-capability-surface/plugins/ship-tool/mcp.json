@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ship-index": {
+      "command": "${CURSOR_PLUGIN_ROOT}/bin/index",
+      "args": ["--data", "${PLUGIN_DATA}"],
+      "env": {"SHIP_HOME": "${CLAUDE_PLUGIN_ROOT}"}
+    }
+  }
+}

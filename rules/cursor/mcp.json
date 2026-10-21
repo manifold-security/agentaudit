@@ -1,0 +1,26 @@
+[
+  {
+    "id": "cursor.mcp.server",
+    "name": "MCP server the agent can invoke",
+    "description": "A configured MCP server the agent can invoke as a tool; transport (stdio/http/sse) is shown as a field, not a separate check.",
+    "category": ["code-execution"],
+    "appliesTo": ["cursor"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "transport", "op": "exists"}
+      ]
+    },
+    "message": "MCP server the agent can invoke (transport shown)",
+    "references": ["https://cursor.com/docs/mcp.md"],
+    "examples": [
+      {"transport": "stdio", "command": "/usr/local/bin/mytool"},
+      {"transport": "http", "url": "https://api.example.com"},
+      {"transport": "sse", "url": "https://api.example.com/sse"}
+    ],
+    "negative_examples": [
+      {"transport": ""}
+    ]
+  }
+]

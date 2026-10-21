@@ -1,0 +1,44 @@
+[
+  {
+    "id": "claude.payload.referenced-script",
+    "name": "Referenced bundled script or executable",
+    "description": "A script/executable under .claude/skills/** or .claude/commands/** whose path is referenced by its owning SKILL.md or command file. Mutually exclusive with claude.payload.bundled-script below: both match on referenced with the same ^true$ regex, one matches and one notMatches.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "bundledPayload",
+    "match": {"condition": "and", "rules": [
+      {"field": "path", "op": "exists"},
+      {"field": "referenced", "op": "matches", "value": "^true$"}
+    ]},
+    "message": "A bundled script referenced by its skill or command is pre-wired to run on invocation",
+    "references": ["https://code.claude.com/docs/en/skills"],
+    "examples": [
+      {"path": ".claude/skills/demo/scripts/validate.sh", "extension": ".sh", "executable": "true", "referenced": "true", "referencedBy": ".claude/skills/demo/SKILL.md"},
+      {"path": ".claude/commands/tool", "executable": "true", "referenced": "true", "referencedBy": ".claude/commands/deploy.md"}
+    ],
+    "negative_examples": [
+      {"path": ".claude/skills/demo/scripts/orphan.py", "extension": ".py"}
+    ]
+  },
+  {
+    "id": "claude.payload.bundled-script",
+    "name": "Bundled script or executable",
+    "description": "A script/executable under .claude/skills/** or .claude/commands/** with no reference from its owning SKILL.md or command file. See claude.payload.referenced-script above: the two rules split the same entity population on referenced and never both fire.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "bundledPayload",
+    "match": {"condition": "and", "rules": [
+      {"field": "path", "op": "exists"},
+      {"field": "referenced", "op": "notMatches", "value": "^true$"}
+    ]},
+    "message": "An executable payload is bundled under .claude/skills or .claude/commands",
+    "references": ["https://code.claude.com/docs/en/skills"],
+    "examples": [
+      {"path": ".claude/skills/demo/scripts/orphan.py", "extension": ".py"}
+    ],
+    "negative_examples": [
+      {"path": ".claude/skills/demo/scripts/validate.sh", "extension": ".sh", "executable": "true", "referenced": "true", "referencedBy": ".claude/skills/demo/SKILL.md"},
+      {"path": ".claude/commands/tool", "executable": "true", "referenced": "true", "referencedBy": ".claude/commands/deploy.md"}
+    ]
+  }
+]

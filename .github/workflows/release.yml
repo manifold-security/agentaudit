@@ -1,0 +1,198 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# Actions pinned to full commit SHA (immutable); a tag can be repointed.
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      ldflags: ${{ steps.stamp.outputs.ldflags }}
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # SemVer 2.0 without build metadata.
+      - name: Refuse a tag that is not a release version
+        run: |
+          num='(0|[1-9][0-9]*)'
+          id="(${num}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+          re="^v${num}\.${num}\.${num}(-${id}(\.${id})*)?$"
+          if [[ ! "$TAG" =~ $re ]]; then
+            echo "::error::tag '$TAG' is not vMAJOR.MINOR.PATCH[-PRERELEASE]"
+            exit 1
+          fi
+      - name: Resolve the commit and the ldflags
+        id: stamp
+        run: |
+          VERSION="${TAG#v}"
+          COMMIT="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          {
+            echo "version=${VERSION}"
+            echo "commit=${COMMIT}"
+            echo "ldflags=-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}"
+          } >> "$GITHUB_OUTPUT"
+      # A bare origin/main resolves to a tag of that name before the
+      # remote-tracking branch.
+      - name: Refuse a tag whose commit is not on main
+        env:
+          COMMIT: ${{ steps.stamp.outputs.commit }}
+        run: |
+          if ! git merge-base --is-ancestor "$COMMIT" refs/remotes/origin/main; then
+            echo "::error::tag $TAG points at $COMMIT, which is not on main"
+            exit 1
+          fi
+      # gh exits 1 both for a missing release and for an API error.
+      - name: Refuse a tag that already has a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" 2>&1)"; then
+            echo "::error::release $TAG already exists"
+            exit 1
+          fi
+          if [ "$out" != "release not found" ]; then
+            echo "::error::cannot tell whether release $TAG exists: $out"
+            exit 1
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # setup-go exports GOTOOLCHAIN=local, so the go command does not switch
+      # to the toolchain go.mod names. A go.mod that names none refuses the tag.
+      - name: Refuse a Go other than go.mod's toolchain
+        run: |
+          mod="$(go mod edit -json)"
+          want="$(jq -r '.Toolchain // empty' <<<"$mod")"
+          got="$(go env GOVERSION)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::Go is ${got}, but go.mod's toolchain line is '${want}'"
+            exit 1
+          fi
+      # TestOSIsolation_* runs go list with GOPROXY=off; see listGraph.
+      - name: Download modules
+        run: go mod download
+      - name: Check
+        run: make check
+      # go build accepts an -X naming a symbol that does not exist, so the
+      # stamp is checked on the running binary.
+      - name: Check that --version reports the tag and commit
+        env:
+          VERSION: ${{ steps.stamp.outputs.version }}
+          COMMIT: ${{ steps.stamp.outputs.commit }}
+          LDFLAGS: ${{ steps.stamp.outputs.ldflags }}
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" \
+            -o "$RUNNER_TEMP/agentaudit" ./cmd/agentaudit
+          got="$("$RUNNER_TEMP/agentaudit" --version)"
+          want="agentaudit ${VERSION} (commit: ${COMMIT})"
+          if [ "$got" != "$want" ]; then
+            echo "::error::--version printed '$got', want '$want'"
+            exit 1
+          fi
+
+  # Keep repo code from executing here (tests, make, a built binary): this job
+  # holds a write token and OIDC.
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ github.ref_name }}
+      LDFLAGS: ${{ needs.check.outputs.ldflags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Refuse a Go other than go.mod's toolchain
+        run: |
+          mod="$(go mod edit -json)"
+          want="$(jq -r '.Toolchain // empty' <<<"$mod")"
+          got="$(go env GOVERSION)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::Go is ${got}, but go.mod's toolchain line is '${want}'"
+            exit 1
+          fi
+      # The archives name their members: archiving "." adds a ./ entry with the
+      # stage's 0700 mode, which GNU tar applies to the directory a user
+      # extracts into.
+      - name: Build the archives and SHA256SUMS
+        run: |
+          : "${LDFLAGS:?check produced no ldflags}"
+          mkdir dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            stage="$(mktemp -d -p "$RUNNER_TEMP")"
+            exe="agentaudit"
+            if [ "$goos" = windows ]; then exe="agentaudit.exe"; fi
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath \
+              -ldflags "$LDFLAGS" -o "$stage/$exe" ./cmd/agentaudit
+            cp LICENSE NOTICE README.md "$stage/"
+            if [ "$goos" = windows ]; then
+              (cd "$stage" && zip -q "$GITHUB_WORKSPACE/dist/agentaudit_${goos}_${goarch}.zip" "$exe" LICENSE NOTICE README.md)
+            else
+              tar --owner=0 --group=0 --numeric-owner \
+                -czf "dist/agentaudit_${goos}_${goarch}.tar.gz" \
+                -C "$stage" "$exe" LICENSE NOTICE README.md
+            fi
+          done
+          (cd dist && sha256sum agentaudit_*) > dist/SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fence='```'
+          notes="$(cat <<EOF
+          ## Install
+
+          Download the archive for your platform below, then check it:
+
+          ${fence}bash
+          shasum -a 256 --ignore-missing -c SHA256SUMS
+          gh attestation verify <archive> --repo ${GITHUB_REPOSITORY} --signer-workflow ${GITHUB_REPOSITORY}/.github/workflows/release.yml
+          ${fence}
+
+          The [README](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}#install) has the steps for each platform.
+          EOF
+          )"
+          prerelease=()
+          case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$TAG" \
+            --generate-notes \
+            --notes "$notes" \
+            "${prerelease[@]}"

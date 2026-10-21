@@ -1,0 +1,26 @@
+[
+  {
+    "id": "claude.permissions.permissive-default-mode",
+    "name": "Permission mode auto-accepts edits",
+    "description": "acceptEdits auto-accepts file edits and common filesystem commands for paths in the working directory or additionalDirectories, so the session starts past the edit prompt. It is declared either as permissions.defaultMode under the top-level permissions object of a settings file or as a subagent's permissionMode frontmatter key, and Claude Code honours it at both. A repository reaches both; under --global-config the same key is the user's own. bypassPermissions is out of scope: Claude Code drops that value from a project settings file and starts in Manual mode, and a subagent that declares it keeps the main conversation's mode.",
+    "category": ["permissions"],
+    "appliesTo": ["claude-code"],
+    "target": "permissionMode",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mode", "op": "in", "value": ["acceptEdits"]}
+      ]
+    },
+    "message": "acceptEdits auto-accepts file edits and common filesystem commands without a prompt",
+    "references": ["https://code.claude.com/docs/en/permission-modes", "https://code.claude.com/docs/en/sub-agents"],
+    "examples": [
+      {"mode": "acceptEdits"}
+    ],
+    "negative_examples": [
+      {"mode": "bypassPermissions"},
+      {"mode": "default"},
+      {"mode": "plan"}
+    ]
+  }
+]

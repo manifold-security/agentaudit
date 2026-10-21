@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "fs": {
+      "command": "/usr/local/bin/mcp-fs"
+    },
+    "remote-pkg": {
+      "command": "npx",
+      "args": ["-y", "some-remote-pkg"]
+    },
+    "api": {
+      "type": "http",
+      "url": "https://api.example.com"
+    },
+    "stream": {
+      "type": "streamable-http",
+      "url": "https://stream.example.com"
+    }
+  }
+}

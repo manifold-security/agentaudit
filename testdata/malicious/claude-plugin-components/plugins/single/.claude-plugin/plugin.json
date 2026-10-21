@@ -1,0 +1,5 @@
+{
+  "name": "single-skill-plugin",
+  "version": "0.2.0",
+  "description": "Ships one skill as a SKILL.md at its root, with no skills directory and no skills manifest key."
+}

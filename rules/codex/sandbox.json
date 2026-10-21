@@ -1,0 +1,58 @@
+[
+  {
+    "id": "codex.sandbox.full-access",
+    "name": "Sandbox is turned off for every command the agent runs",
+    "description": "sandbox_mode in .codex/config.toml selects the confinement agent-run commands execute under. danger-full-access removes the filesystem and network boundaries, so a command the agent composes reaches the whole machine rather than the workspace.",
+    "category": ["sandbox"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mode", "op": "equals", "value": "danger-full-access"}
+      ]
+    },
+    "message": "The sandbox is turned off for every command the agent runs",
+    "references": ["https://learn.chatgpt.com/docs/config-file/config-reference.md"],
+    "examples": [
+      {"mode": "danger-full-access"}
+    ],
+    "negative_examples": [
+      {"mode": "read-only"},
+      {"mode": "workspace-write"},
+      {"mode": ""},
+      {"path": "/", "access": "readwrite"}
+    ]
+  },
+  {
+    "id": "codex.sandbox.writable-root",
+    "name": "Sandbox write access is granted by an absolute or home path",
+    "description": "writable_roots in the sandbox_workspace_write table adds a location to the set an agent-run command may write, on top of the project directory. Reported where the entry names an absolute or home path rather than a workspace-relative one, since only such a root reaches past the project the sandbox already grants. A root naming a home directory, a credential store, or the filesystem root turns a workspace sandbox into a machine-wide write grant.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "access", "op": "equals", "value": "readwrite"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|[A-Za-z]:)"}
+      ]
+    },
+    "message": "writable_roots grants write access by an absolute or home path rather than a workspace-relative one",
+    "references": ["https://learn.chatgpt.com/docs/config-file/config-reference.md"],
+    "examples": [
+      {"path": "/", "access": "readwrite"},
+      {"path": "~/.ssh", "access": "readwrite"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "readwrite"},
+      {"path": ".", "access": "readwrite"},
+      {"path": "./build", "access": "readwrite"},
+      {"path": "target", "access": "readwrite"},
+      {"path": "~/.ssh", "access": "readonly"},
+      {"mode": "danger-full-access"},
+      {"mode": "workspace-write"}
+    ]
+  }
+]

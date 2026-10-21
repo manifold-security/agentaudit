@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits"
+  },
+  "sandbox": {
+    "network": {
+      "allowUnixSockets": [
+        "/var/run/docker.sock",
+        "/tmp/app.sock"
+      ]
+    }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": ["memory"]
+}

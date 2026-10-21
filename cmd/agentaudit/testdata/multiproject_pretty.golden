@@ -1,0 +1,15 @@
+agentaudit · container/proj1
+
+(claude-code)
+code-execution:
+  hook PreToolUse [*] (fires without user action) · echo hi · .claude/settings.json:hooks.PreToolUse[0].hooks[0]
+
+1 capability · 1 file · 1 category
+
+agentaudit · container/proj2
+
+(claude-code)
+code-execution:
+  mcpServer fs (stdio) · npx mcp-fs · .mcp.json:mcpServers.fs
+
+1 capability · 1 file · 1 category

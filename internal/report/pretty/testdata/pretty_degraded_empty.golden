@@ -1,0 +1,5 @@
+agentaudit · .
+
+SCAN INCOMPLETE: 3 sources could not be read and 2 sources could not be parsed (see stderr); capabilities may be missing
+no source the scan could read and parse declared a capability
+0 capabilities · 0 files · 0 categories · 3 unreadable sources · 2 unparsed sources

@@ -1,0 +1,213 @@
+[
+  {
+    "id": "codex.permissions.profile-full-access",
+    "name": "The selected permission profile removes the local sandbox",
+    "description": "The :danger-full-access built-in removes the local sandbox restrictions, so a command the agent composes reaches the whole machine rather than the workspace. A profile selects it through default_permissions or inherits it through extends, and either spelling grants the same reach as the sandbox_mode of the same name.",
+    "category": ["sandbox"],
+    "appliesTo": ["codex"],
+    "target": "permissionMode",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "mode", "op": "equals", "value": ":danger-full-access"}
+      ]
+    },
+    "message": "A permission profile removes the local sandbox restrictions",
+    "references": ["https://learn.chatgpt.com/docs/permissions.md"],
+    "examples": [
+      {"mode": ":danger-full-access"}
+    ],
+    "negative_examples": [
+      {"mode": ":read-only"},
+      {"mode": ":workspace"},
+      {"mode": "danger-full-access"},
+      {"mode": "never"},
+      {"mode": ""}
+    ]
+  },
+  {
+    "id": "codex.permissions.workspace-root",
+    "name": "A permission profile pulls a path into the workspace",
+    "description": "A workspace_roots entry makes a path part of the workspace the profile works in, and so sets what a :workspace_roots filesystem key resolves against.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "access", "op": "equals", "value": "workspace_root"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|[A-Za-z]:)"}
+      ]
+    },
+    "message": "A permission profile adds an absolute or home path to the workspace",
+    "references": ["https://learn.chatgpt.com/docs/permissions.md"],
+    "examples": [
+      {"path": "~/code/app", "access": "workspace_root"},
+      {"path": "$HOME/code", "access": "workspace_root"},
+      {"path": "C:\\work", "access": "workspace_root"},
+      {"path": "/", "access": "workspace_root"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "workspace_root"},
+      {"path": ".", "access": "workspace_root"},
+      {"path": "src", "access": "workspace_root"},
+      {"path": "~/code/app", "access": "write"},
+      {"path": "~/code/app", "access": "readwrite"},
+      {"mode": "workspace-write"}
+    ]
+  },
+  {
+    "id": "codex.permissions.filesystem-write",
+    "name": "A permission profile grants write access to a path",
+    "description": "A filesystem entry set to write lets an agent-run command create and overwrite what the path or glob covers. A relative key grants writing inside the workspace the agent was pointed at, which is the posture the :workspace preset itself sets.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "access", "op": "equals", "value": "write"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|:root$|[A-Za-z]:)"}
+      ]
+    },
+    "message": "A permission profile grants write access by an absolute, home or token path rather than a workspace-relative one",
+    "references": ["https://learn.chatgpt.com/docs/permissions.md"],
+    "examples": [
+      {"path": "/etc", "access": "write"},
+      {"path": ":root", "access": "write"},
+      {"path": "$HOME/.aws", "access": "write"},
+      {"path": "C:\\Windows\\System32", "access": "write"},
+      {"path": "~/.ssh/**", "access": "write"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "write"},
+      {"path": ".", "access": "write"},
+      {"path": "./src", "access": "write"},
+      {"path": "src", "access": "write"},
+      {"path": "**/*.ts", "access": "write"},
+      {"path": "~/.ssh/**", "access": "read"},
+      {"path": "~/.ssh/**", "access": "deny"},
+      {"path": "~/.ssh/**", "access": "readwrite"}
+    ]
+  },
+  {
+    "id": "codex.permissions.filesystem-read",
+    "name": "A permission profile grants read access by an absolute, home or token path",
+    "description": "A filesystem entry set to read lets an agent-run command open what the path or glob covers. Reading is enough to stage an exfiltration: a credential file the agent can read is a credential it can put in a command it runs. No spelling tells a secret path from a dull one, so this rule takes the same absolute, home or token path its filesystem-write sibling takes, and a reader judges the destination. A relative key reads inside the workspace the agent was pointed at, and a repository-local .env is left out with it: the vendor documents a :workspace_roots glob such as **/*.env as something a profile denies rather than grants.",
+    "category": ["filesystem-access"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "path", "op": "exists"},
+        {"field": "access", "op": "equals", "value": "read"},
+        {"field": "path", "op": "matches", "value": "^(/|\\\\|~|\\$HOME|:root$|[A-Za-z]:)"}
+      ]
+    },
+    "message": "A permission profile grants read access by an absolute, home or token path rather than a workspace-relative one",
+    "references": ["https://learn.chatgpt.com/docs/permissions.md"],
+    "examples": [
+      {"path": "~/.aws/credentials", "access": "read"},
+      {"path": ":root", "access": "read"},
+      {"path": "/home/ci/.gnupg", "access": "read"},
+      {"path": "$HOME/.config/gh/hosts.yml", "access": "read"},
+      {"path": "~\\.ssh", "access": "read"},
+      {"path": "C:\\Users\\you\\.aws\\credentials", "access": "read"},
+      {"path": "~", "access": "read"}
+    ],
+    "negative_examples": [
+      {"path": "", "access": "read"},
+      {"path": ".", "access": "read"},
+      {"path": "src/main.go", "access": "read"},
+      {"path": ".env", "access": "read"},
+      {"path": "**/*.env", "access": "read"},
+      {"path": "~/.aws/credentials", "access": "write"},
+      {"path": "~/.aws/credentials", "access": "deny"},
+      {"path": "~/.aws/credentials", "access": "readonly"}
+    ]
+  },
+  {
+    "id": "codex.permissions.network-enabled",
+    "name": "A permission profile opens outbound network traffic",
+    "description": "The network table's enabled key decides whether a command the agent runs may reach the network at all. Granting it pairs the profile's filesystem reach with egress, which is what turns a file the agent read into a file an attacker receives.",
+    "category": ["network-access"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "default", "op": "equals", "value": "enabled"}
+      ]
+    },
+    "message": "A permission profile opens outbound network traffic",
+    "references": ["https://learn.chatgpt.com/docs/permissions.md"],
+    "examples": [
+      {"default": "enabled"}
+    ],
+    "negative_examples": [
+      {"default": ""},
+      {"default": "true"},
+      {"default": "allow"},
+      {"pattern": "api.example.com"}
+    ]
+  },
+  {
+    "id": "codex.permissions.network-domain",
+    "name": "A host pattern is allowed for outbound traffic",
+    "description": "A domains entry set to allow names a host the agent may reach. Matching ignores the URL path, so the whole host is reachable however narrow the entry reads, and a host that accepts arbitrary content is an exfiltration route on its own.",
+    "category": ["network-access"],
+    "appliesTo": ["codex"],
+    "target": "networkPolicy",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "pattern", "op": "exists"}
+      ]
+    },
+    "message": "Outbound traffic to this host pattern is allowed",
+    "references": [
+      "https://learn.chatgpt.com/docs/permissions.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"pattern": "api.example.com"},
+      {"pattern": "*.example.net"}
+    ],
+    "negative_examples": [
+      {"pattern": ""},
+      {"default": "enabled"},
+      {"default": "true"}
+    ]
+  },
+  {
+    "id": "codex.permissions.unix-socket",
+    "name": "A Unix socket is admitted",
+    "description": "A unix_sockets entry admits a socket path, and a socket is a channel the network rules never see. A container-runtime control socket or an ssh-agent socket hands the agent host-level control or credential forwarding through a path that reads as a local file.",
+    "category": ["sandbox"],
+    "appliesTo": ["codex"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "socketPath", "op": "exists"}
+      ]
+    },
+    "message": "This Unix socket is admitted",
+    "references": [
+      "https://learn.chatgpt.com/docs/permissions.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"socketPath": "/var/run/docker.sock"},
+      {"socketPath": "/run/user/1000/gnupg/S.gpg-agent"}
+    ],
+    "negative_examples": [
+      {"socketPath": ""},
+      {"path": "/var/run/docker.sock", "access": "write"},
+      {"mode": "danger-full-access"}
+    ]
+  }
+]

@@ -1,0 +1,84 @@
+[
+  {
+    "id": "codex.mcp.server",
+    "name": "MCP server the agent can invoke",
+    "description": "An [mcp_servers.<id>] table configures an MCP server for Codex: a STDIO server runs as a local process started by its command, and a Streamable HTTP server is one accessed at its url. Transport is shown as a field, not a separate check, and a table declaring both a command and a url is reported by its command with the url shown beside it. Project-scoped MCP servers are read from .codex/config.toml in trusted projects only, and enabled = false disables a server without deleting it, so a disabled server is not reported.",
+    "category": ["code-execution"],
+    "appliesTo": ["codex"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "transport", "op": "exists"},
+        {"field": "headersHelper", "op": "equals", "value": ""},
+        {"field": "forwardedEnv", "op": "equals", "value": ""}
+      ]
+    },
+    "message": "MCP server the agent can invoke (transport shown)",
+    "references": ["https://learn.chatgpt.com/docs/extend/mcp.md"],
+    "examples": [
+      {"transport": "stdio", "command": "npx"},
+      {"transport": "http", "url": "https://mcp.example.test/mcp"},
+      {"transport": "stdio", "command": "npx", "url": "https://mcp.example.test/mcp"}
+    ],
+    "negative_examples": [
+      {"transport": ""},
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "headersHelper": "./scripts/headers.sh"},
+      {"transport": "stdio", "command": "npx", "forwardedEnv": "LOCAL_TOKEN"}
+    ]
+  },
+  {
+    "id": "codex.mcp.headers-helper",
+    "name": "MCP connection runs a header helper command",
+    "description": "http_headers_helper is a local command that prints a JSON object of header names and string values for an HTTP MCP server, supported for HTTP MCP connections made from the local environment. Codex caches helper headers for the connection. Project-scoped MCP servers are read from .codex/config.toml in trusted projects only.",
+    "category": ["code-execution"],
+    "appliesTo": ["codex"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "headersHelper", "op": "exists"}
+      ]
+    },
+    "message": "Connecting to this MCP server runs a local command",
+    "references": [
+      "https://learn.chatgpt.com/docs/extend/mcp.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "headersHelper": "./scripts/headers.sh"}
+    ],
+    "negative_examples": [
+      {"transport": "http", "url": "https://mcp.example.test/mcp"},
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "forwardedEnv": "DOCS_TOKEN"}
+    ]
+  },
+  {
+    "id": "codex.mcp.env-forward",
+    "name": "MCP server receives a local environment variable",
+    "description": "The server receives the value of a variable from Codex's local environment. bearer_token_env_var names an environment variable for a bearer token to send in Authorization; env_http_headers maps header names to environment variable names whose values are pulled from the environment; and a string or source = \"local\" entry in env_vars reads from Codex's local environment for a stdio server. An env_vars entry with source = \"remote\" reads from the remote executor environment and is not reported. Project-scoped MCP servers are read from .codex/config.toml in trusted projects only.",
+    "category": ["credential-access"],
+    "appliesTo": ["codex"],
+    "target": "mcpServer",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "forwardedEnv", "op": "exists"},
+        {"field": "headersHelper", "op": "equals", "value": ""}
+      ]
+    },
+    "message": "A local environment variable is sent to this MCP server",
+    "references": [
+      "https://learn.chatgpt.com/docs/extend/mcp.md",
+      "https://learn.chatgpt.com/docs/config-file/config-reference.md"
+    ],
+    "examples": [
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "forwardedEnv": "DOCS_TOKEN"},
+      {"transport": "stdio", "command": "npx", "forwardedEnv": "LOCAL_TOKEN"}
+    ],
+    "negative_examples": [
+      {"transport": "stdio", "command": "npx"},
+      {"transport": "http", "url": "https://mcp.example.test/mcp", "forwardedEnv": "DOCS_TOKEN", "headersHelper": "./scripts/headers.sh"}
+    ]
+  }
+]

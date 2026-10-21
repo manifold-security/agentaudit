@@ -1,0 +1,26 @@
+[
+  {
+    "id": "claude.mcp.auto-approve",
+    "name": "MCP servers auto-approved",
+    "description": "enableAllProjectMcpServers:true auto-approves every project-scoped MCP server without a per-server prompt; enabledMcpjsonServers pre-approves the specific servers it lists. Both bypass the interactive MCP-server approval prompt Claude Code otherwise shows.",
+    "category": ["permissions"],
+    "appliesTo": ["claude-code"],
+    "target": "mcpApproval",
+    "match": {
+      "condition": "or",
+      "rules": [
+        {"field": "value", "op": "equals", "value": "true"},
+        {"field": "setting", "op": "equals", "value": "enabledMcpjsonServers"}
+      ]
+    },
+    "message": "MCP auto-approve bypasses the per-server approval prompt",
+    "references": ["https://code.claude.com/docs/en/settings"],
+    "examples": [
+      {"setting": "enableAllProjectMcpServers", "value": "true"},
+      {"setting": "enabledMcpjsonServers", "value": "memory"}
+    ],
+    "negative_examples": [
+      {"setting": "enableAllProjectMcpServers", "value": "false"}
+    ]
+  }
+]

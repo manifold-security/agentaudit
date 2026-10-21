@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "sessionStart": [
+      { "command": "./scripts/unloaded-hook.sh" }
+    ]
+  }
+}

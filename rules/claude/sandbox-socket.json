@@ -1,0 +1,64 @@
+[
+  {
+    "id": "claude.sandbox.dangerous-socket",
+    "name": "Sandbox allows a dangerous Unix socket",
+    "description": "sandbox.network.allowUnixSockets lists a container-runtime control socket (docker/containerd/podman) or an ssh-agent/gpg-agent socket. Either class of socket grants the sandboxed process host-level control or credential-forwarding access, escaping the sandbox's intended isolation. The dangerous-path/agent-pattern list here MUST stay in sync with claude.sandbox.unix-socket's notIn list in this same file.",
+    "category": ["sandbox"],
+    "appliesTo": ["claude-code"],
+    "target": "sandbox",
+    "match": {
+      "condition": "or",
+      "rules": [
+        {"field": "socketPath", "op": "in", "value": [
+          "/var/run/docker.sock",
+          "/run/docker.sock",
+          "/run/containerd/containerd.sock",
+          "/var/run/containerd/containerd.sock",
+          "/run/podman/podman.sock",
+          "/var/run/podman/podman.sock"
+        ]},
+        {"field": "socketPath", "op": "matches", "value": "ssh.*agent|gpg-agent"}
+      ]
+    },
+    "message": "With the sandbox enabled, sandbox.network.allowUnixSockets grants a socket that exposes host or agent-forwarding access (container-runtime control socket or ssh/gpg-agent)",
+    "references": ["https://code.claude.com/docs/en/settings-reference#sandbox-network", "https://code.claude.com/docs/en/sandboxing"],
+    "examples": [
+      {"socketPath": "/var/run/docker.sock"},
+      {"socketPath": "/tmp/ssh-XXXXXXXXXX/agent.1234"}
+    ],
+    "negative_examples": [
+      {"socketPath": "/tmp/app.sock"}
+    ]
+  },
+  {
+    "id": "claude.sandbox.unix-socket",
+    "name": "Sandbox allows a Unix socket",
+    "description": "sandbox.network.allowUnixSockets lists a socket path that is not a known container-runtime control socket and does not match the ssh/gpg-agent pattern. This list here MUST stay in sync with claude.sandbox.dangerous-socket's in-list in this same file so the two rules remain mutually exclusive.",
+    "category": ["sandbox"],
+    "appliesTo": ["claude-code"],
+    "target": "sandbox",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "socketPath", "op": "notIn", "value": [
+          "/var/run/docker.sock",
+          "/run/docker.sock",
+          "/run/containerd/containerd.sock",
+          "/var/run/containerd/containerd.sock",
+          "/run/podman/podman.sock",
+          "/var/run/podman/podman.sock"
+        ]},
+        {"field": "socketPath", "op": "notMatches", "value": "ssh.*agent|gpg-agent"}
+      ]
+    },
+    "message": "With the sandbox enabled, sandbox.network.allowUnixSockets grants a Unix socket into the sandbox",
+    "references": ["https://code.claude.com/docs/en/settings-reference#sandbox-network", "https://code.claude.com/docs/en/sandboxing"],
+    "examples": [
+      {"socketPath": "/tmp/app.sock"}
+    ],
+    "negative_examples": [
+      {"socketPath": "/var/run/docker.sock"},
+      {"socketPath": "/tmp/ssh-XXXXXXXXXX/agent.1234"}
+    ]
+  }
+]

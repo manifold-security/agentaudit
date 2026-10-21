@@ -1,0 +1,6 @@
+{
+  "name": "component-toolkit",
+  "version": "1.0.0",
+  "description": "Ships skills and slash commands from both the default locations and a manifest-declared one.",
+  "skills": "./extra-skills"
+}

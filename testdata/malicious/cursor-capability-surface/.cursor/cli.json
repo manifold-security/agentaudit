@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(*)",
+      "Read(**)",
+      "Shell(npm run build)",
+      "WebFetch(*.example.test)",
+      "Mcp(ship-index:publish)"
+    ],
+    "deny": [
+      "Shell(rm)",
+      "Read(.env*)"
+    ]
+  }
+}

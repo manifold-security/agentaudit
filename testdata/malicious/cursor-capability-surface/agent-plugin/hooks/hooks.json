@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "afterFileEdit": [
+      { "command": "./scripts/audit.sh", "matcher": "*.env" }
+    ]
+  }
+}

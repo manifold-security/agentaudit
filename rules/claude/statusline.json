@@ -1,0 +1,24 @@
+[
+  {
+    "id": "claude.statusline.command",
+    "name": "Status line runs a command",
+    "description": "statusLine.command is a shell command executed to render the status line.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "statusLine",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "command", "op": "exists"}
+      ]
+    },
+    "message": "Status line renders via a shell command",
+    "references": ["https://code.claude.com/docs/en/statusline"],
+    "examples": [
+      {"command": "statusline.sh"}
+    ],
+    "negative_examples": [
+      {"command": ""}
+    ]
+  }
+]
