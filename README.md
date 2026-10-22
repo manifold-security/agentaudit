@@ -18,17 +18,37 @@ go install github.com/manifold-security/agentaudit/cmd/agentaudit@latest
 
 Download the archive for your platform and `SHA256SUMS` from [Releases](https://github.com/manifold-security/agentaudit/releases), or with the [GitHub CLI](https://cli.github.com/) as below. Check the checksum and the attestation before you run the binary.
 
-#### macOS and Linux
+#### macOS
+
+On an Intel Mac, replace `darwin_arm64` with `darwin_amd64`.
 
 ```sh
 gh release download -R manifold-security/agentaudit -p agentaudit_darwin_arm64.tar.gz -p SHA256SUMS
-shasum -a 256 --ignore-missing -c SHA256SUMS      # Linux: sha256sum --ignore-missing -c SHA256SUMS
+shasum -a 256 --ignore-missing -c SHA256SUMS
 gh attestation verify agentaudit_darwin_arm64.tar.gz --repo manifold-security/agentaudit --signer-workflow manifold-security/agentaudit/.github/workflows/release.yml
 tar -xzf agentaudit_darwin_arm64.tar.gz agentaudit
 mkdir -p ~/.local/bin && mv agentaudit ~/.local/bin/
 ```
 
 If macOS refuses to run it, clear the quarantine mark: `xattr -d com.apple.quarantine ~/.local/bin/agentaudit`.
+
+If `~/.local/bin` is not on your `PATH`, add this line to your shell profile:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### Linux
+
+On arm64, replace `linux_amd64` with `linux_arm64`.
+
+```sh
+gh release download -R manifold-security/agentaudit -p agentaudit_linux_amd64.tar.gz -p SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify agentaudit_linux_amd64.tar.gz --repo manifold-security/agentaudit --signer-workflow manifold-security/agentaudit/.github/workflows/release.yml
+tar -xzf agentaudit_linux_amd64.tar.gz agentaudit
+mkdir -p ~/.local/bin && mv agentaudit ~/.local/bin/
+```
 
 If `~/.local/bin` is not on your `PATH`, add this line to your shell profile:
 
