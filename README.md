@@ -6,33 +6,75 @@ It currently supports Claude Code, Codex and Cursor.
 
 ## Install
 
-Download the archive for your platform from the
-[Releases](https://github.com/manifold-security/agentaudit/releases) page, check it against
-`SHA256SUMS`, and put the `agentaudit` binary on your `PATH`:
-
-```sh
-shasum -a 256 --ignore-missing -c SHA256SUMS
-tar -xzf agentaudit_darwin_arm64.tar.gz
-mkdir -p ~/.local/bin && mv agentaudit ~/.local/bin/
-```
-
-With Go installed:
+### With Go
 
 ```sh
 go install github.com/manifold-security/agentaudit/cmd/agentaudit@latest
 ```
 
-Or build from source:
+`go install` needs Go 1.26.0 or later.
+
+### From a release archive
+
+Download the archive for your platform and `SHA256SUMS` from [Releases](https://github.com/manifold-security/agentaudit/releases), or with the [GitHub CLI](https://cli.github.com/) as below. Check the checksum and the attestation before you run the binary.
+
+#### macOS
+
+On an Intel Mac, replace `darwin_arm64` with `darwin_amd64`.
 
 ```sh
-make build                          # builds dist/agentaudit
-mkdir -p ~/.local/bin && mv dist/agentaudit ~/.local/bin/
+gh release download -R manifold-security/agentaudit -p agentaudit_darwin_arm64.tar.gz -p SHA256SUMS
+shasum -a 256 --ignore-missing -c SHA256SUMS
+gh attestation verify agentaudit_darwin_arm64.tar.gz --repo manifold-security/agentaudit --signer-workflow manifold-security/agentaudit/.github/workflows/release.yml
+tar -xzf agentaudit_darwin_arm64.tar.gz agentaudit
+mkdir -p ~/.local/bin && mv agentaudit ~/.local/bin/
+```
+
+If macOS refuses to run it, clear the quarantine mark: `xattr -d com.apple.quarantine ~/.local/bin/agentaudit`.
+
+If `~/.local/bin` is not on your `PATH`, add this line to your shell profile:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### Linux
+
+On arm64, replace `linux_amd64` with `linux_arm64`.
+
+```sh
+gh release download -R manifold-security/agentaudit -p agentaudit_linux_amd64.tar.gz -p SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+gh attestation verify agentaudit_linux_amd64.tar.gz --repo manifold-security/agentaudit --signer-workflow manifold-security/agentaudit/.github/workflows/release.yml
+tar -xzf agentaudit_linux_amd64.tar.gz agentaudit
+mkdir -p ~/.local/bin && mv agentaudit ~/.local/bin/
 ```
 
 If `~/.local/bin` is not on your `PATH`, add this line to your shell profile:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+#### Windows
+
+In PowerShell:
+
+```powershell
+gh release download -R manifold-security/agentaudit -p agentaudit_windows_amd64.zip -p SHA256SUMS
+(Get-FileHash -Algorithm SHA256 .\agentaudit_windows_amd64.zip).Hash.ToLower() -eq ((Select-String -Path SHA256SUMS -SimpleMatch 'agentaudit_windows_amd64.zip').Line -split '\s+')[0]
+gh attestation verify agentaudit_windows_amd64.zip --repo manifold-security/agentaudit --signer-workflow manifold-security/agentaudit/.github/workflows/release.yml
+Expand-Archive .\agentaudit_windows_amd64.zip -DestinationPath agentaudit
+Unblock-File .\agentaudit\agentaudit.exe
+```
+
+The second line must print `True`. Then move `agentaudit\agentaudit.exe` to a directory on your `PATH`.
+
+### From source
+
+```sh
+make build                          # builds dist/agentaudit
+mkdir -p ~/.local/bin && mv dist/agentaudit ~/.local/bin/
 ```
 
 ## Quick start
@@ -42,7 +84,10 @@ Scan a repository from anywhere by naming it, or `cd` into it and run the comman
 ```sh
 agentaudit /path/to/repo
 cd /path/to/repo && agentaudit
+agentaudit https://github.com/wshobson/agents
 ```
+
+A GitHub URL scans a public repository without cloning it.
 
 Sample output, from `agentaudit testdata/malicious/claude-guardrail` in this repository:
 
@@ -75,7 +120,7 @@ Findings are grouped by agent (`(claude-code)`, `(codex)`, `(cursor)`), then by 
 | `sandbox` | turns off or changes the agent's sandbox, or admits a Unix socket |
 | `filesystem-access` | grants read or write access to a path |
 
-A repository whose agent configuration yields nothing prints `no capabilities found` followed by the agents it scanned; one with no agent configuration at all prints `no known agent config read`. 
+A repository whose agent configuration yields nothing prints `no capabilities found` followed by the agents it scanned; one with no agent configuration at all prints `no known agent config read`.
 
 Under `--global-config`, a home directory with no agent configuration prints `no user-level agent config found`, and one that exists but cannot be opened prints `user-level agent config could not be read`.
 
@@ -169,3 +214,15 @@ fmt.Println("unreadable:", report.UnreadableSources(), "unparsed:", report.Unpar
 ```
 
 The Go API is pre-1.0, so a release may change it.
+
+## Supported platforms
+
+| OS | amd64 | arm64 |
+|---|---|---|
+| Linux | `agentaudit_linux_amd64.tar.gz` | `agentaudit_linux_arm64.tar.gz` |
+| macOS | `agentaudit_darwin_amd64.tar.gz` | `agentaudit_darwin_arm64.tar.gz` |
+| Windows | `agentaudit_windows_amd64.zip` | `agentaudit_windows_arm64.zip` |
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
