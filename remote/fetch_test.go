@@ -544,6 +544,49 @@ func TestFetchStopsAtTheContextDeadline(t *testing.T) {
 	}
 }
 
+// A round's scan runs under the fetch's context, and the round fails with
+// its error.
+func TestFetchRoundStopsItsScanWhenTheContextEnds(t *testing.T) {
+	files := fstest.MapFS{
+		".mcp.json":             {Data: []byte(mcpJSON)},
+		".claude/settings.json": {Data: []byte(`{"hooks":{}}`)},
+	}
+	round := func(ctx context.Context, cancelAt int, cancel context.CancelFunc) (int, error) {
+		var entries []treefs.Entry
+		for p := range files {
+			entries = append(entries, treefs.Entry{Path: p})
+		}
+		reads := 0
+		tree, err := treefs.New(entries, func(p string) ([]byte, bool) {
+			if reads++; reads == cancelAt {
+				cancel()
+			}
+			return files[p].Data, true
+		})
+		if err != nil {
+			t.Fatalf("treefs.New() error = %v", err)
+		}
+		err = newFetcher(ctx, DefaultLimits()).rounds(agentaudit.New(), tree, &reader{misses: map[uint32]struct{}{}})
+		return reads, err
+	}
+
+	total, err := round(context.Background(), 0, nil)
+	if err != nil || total < 2 {
+		t.Fatalf("uncancelled round: error = %v after %d blob read(s), want nil after several", err, total)
+	}
+	for n := 1; n <= total; n++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		reads, err := round(ctx, n, cancel)
+		cancel()
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("cancel at read %d of %d: error = %v, want context.Canceled", n, total, err)
+		}
+		if reads != n {
+			t.Errorf("cancel at read %d of %d: the round read %d blob(s), want none past the cancel", n, total, reads)
+		}
+	}
+}
+
 func TestSameOriginRefusesAnotherSchemeOrHost(t *testing.T) {
 	via := []*http.Request{httptest.NewRequest(http.MethodGet, "https://github.com/o/r/info/refs", nil)}
 	for target, follow := range map[string]bool{

@@ -522,11 +522,11 @@ func readObject(obj plumbing.EncodedObject) ([]byte, error) {
 }
 
 // rounds asks for the blobs the tree's reads refused. It never asks again
-// for a blob it withheld: Select reads a withheld path in every round.
+// for a blob it withheld: SelectContext reads a withheld path in every round.
 func (f *fetcher) rounds(s *agentaudit.Scanner, t *treefs.FS, r *reader) error {
 	for range f.l.Rounds {
 		r.missed()
-		if _, err := s.Select(t); err != nil {
+		if _, err := s.SelectContext(f.ctx, t); err != nil {
 			return fmt.Errorf("remote: %w", err)
 		}
 		wants, err := f.wanted(slices.Values(r.missed()))
