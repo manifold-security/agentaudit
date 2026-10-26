@@ -1,10 +1,15 @@
 package agentaudit_test
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
+	"testing/fstest"
+	"time"
 
 	"github.com/manifold-security/agentaudit"
+	"github.com/manifold-security/agentaudit/treefs"
 )
 
 // A blob a plugin manifest declares waits for the round after the manifest
@@ -98,5 +103,66 @@ func TestWithRecursiveChangesWhatSelectAsksFor(t *testing.T) {
 	recursive := selectRound(t, agentaudit.New(agentaudit.WithRecursive()), recursiveTree)
 	if len(plain) == 0 || slices.Equal(plain, recursive) {
 		t.Fatalf("Select() = %q plain and %q under WithRecursive, want two different non-empty sets", plain, recursive)
+	}
+}
+
+// SelectContext's scan reads no blob past the read that sees its context
+// end, and a passed deadline stops it before any read.
+func TestSelectContextStopsItsScanWhenTheContextEnds(t *testing.T) {
+	files := fstest.MapFS{
+		".mcp.json":                 {Data: []byte(`{"mcpServers":{}}`)},
+		".claude/settings.json":     {Data: []byte(validStubSettings)},
+		"sub/.mcp.json":             {Data: []byte(`{"mcpServers":{}}`)},
+		"sub/.claude/settings.json": {Data: []byte(validStubSettings)},
+	}
+	for _, tc := range []struct {
+		name string
+		s    *agentaudit.Scanner
+	}{
+		{"plain", agentaudit.New()},
+		{"WithRecursive", agentaudit.New(agentaudit.WithRecursive())},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			selectAt := func(ctx context.Context, cancelAt int, cancel context.CancelFunc) (int, []string, error) {
+				var entries []treefs.Entry
+				for p := range files {
+					entries = append(entries, treefs.Entry{Path: p})
+				}
+				reads := 0
+				tree, err := treefs.New(entries, func(p string) ([]byte, bool) {
+					if reads++; reads == cancelAt {
+						cancel()
+					}
+					return files[p].Data, true
+				})
+				if err != nil {
+					t.Fatalf("treefs.New() error = %v", err)
+				}
+				asked, err := tc.s.SelectContext(ctx, tree)
+				return reads, asked, err
+			}
+
+			total, _, err := selectAt(context.Background(), 0, nil)
+			if err != nil || total < 2 {
+				t.Fatalf("uncancelled SelectContext(): error = %v after %d blob read(s), want nil after several", err, total)
+			}
+			for n := 1; n <= total; n++ {
+				ctx, cancel := context.WithCancel(context.Background())
+				reads, asked, err := selectAt(ctx, n, cancel)
+				cancel()
+				if !errors.Is(err, context.Canceled) || asked != nil {
+					t.Errorf("cancel at read %d of %d: SelectContext() = %q, %v, want nil, context.Canceled", n, total, asked, err)
+				}
+				if reads != n {
+					t.Errorf("cancel at read %d of %d: the scan read %d blob(s), want none past the cancel", n, total, reads)
+				}
+			}
+
+			ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, 0))
+			defer cancel()
+			if reads, asked, err := selectAt(ctx, 0, nil); !errors.Is(err, context.DeadlineExceeded) || asked != nil || reads != 0 {
+				t.Errorf("passed deadline: SelectContext() = %q, %v after %d blob read(s), want nil, context.DeadlineExceeded after none", asked, err, reads)
+			}
+		})
 	}
 }
