@@ -109,6 +109,7 @@ func TestRun_Recursive_HostileProjectNameCannotForgeAnotherBlocksHeaderLine(t *t
 		escapedPath := strings.ReplaceAll(hostileProject, "\n", `\n`)
 		escapedPath = strings.ReplaceAll(escapedPath, `\`, `\\`)
 		escapedPath = strings.ReplaceAll(escapedPath, "·", "\\u00b7")
+		escapedPath = strings.ReplaceAll(escapedPath, "#", "&#35;")
 		wantHostileLine := "# agentaudit · " + escapedPath
 
 		withOpenTarget(t, map[string]fs.FS{
@@ -189,6 +190,7 @@ func TestRun_HostileTargetNameCannotForgeAnotherBlocksHeaderLine(t *testing.T) {
 		escapedPath := strings.ReplaceAll(hostileTarget, "\n", `\n`)
 		escapedPath = strings.ReplaceAll(escapedPath, `\`, `\\`)
 		escapedPath = strings.ReplaceAll(escapedPath, "·", "\\u00b7")
+		escapedPath = strings.ReplaceAll(escapedPath, "#", "&#35;")
 		wantHostileLine := "# agentaudit · " + escapedPath
 
 		withOpenTarget(t, map[string]fs.FS{

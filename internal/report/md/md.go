@@ -6,6 +6,7 @@ package md
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/manifold-security/agentaudit/finding"
@@ -22,7 +23,7 @@ type Meta struct {
 // carrying a blind spot of either kind signals incompleteness rather than
 // none found.
 func Write(w io.Writer, r finding.Report, meta Meta) error {
-	if _, err := fmt.Fprintf(w, "# agentaudit · %s\n\n", escapeCell(report.Escape(meta.Path))); err != nil {
+	if _, err := fmt.Fprintf(w, "# agentaudit · %s\n\n", escapeHeading(report.Escape(meta.Path))); err != nil {
 		return err
 	}
 
@@ -106,22 +107,62 @@ func writeRow(w io.Writer, f finding.Finding) error {
 
 	_, err := fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | `%s` |\n",
 		escapeCell(report.Escape(f.RuleID)), escapeCell(report.Escape(what)), escapeCell(report.Escape(value)), escapeCell(report.Escape(location)),
-		escapeCell(report.Escape(f.Message)), escapeCell(report.Escape(strings.Join(f.References, "; "))),
+		escapeCell(report.Escape(f.Message)), escapeReference(report.Escape(strings.Join(f.References, "; "))),
 		f.Digest())
 	return err
 }
 
 // escapeCell runs on text report.Escape has already neutralised and keeps
-// that text from breaking the structure around it. The backslash is doubled
-// first, so a spelling Escape produced is not read as escaping what follows
-// it; then the pipe, which would split an extra table column, and the middle
-// dot, which would spell the H1's own " · " separator.
+// that text from breaking the structure around it. A backslash copied from
+// the scanned text is doubled so it is drawn rather than read as escaping a
+// pipe after it; the pipe would split an extra table column, and the middle
+// dot would spell the H1's own " · " separator. The other entries in
+// cellEscaper write a character reference in place of a syntax character,
+// which a renderer draws as the character instead of reading as Markdown or
+// HTML syntax; among them, the entries for "://" and "www." keep a URL as
+// plain text.
 func escapeCell(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, "|", `\|`)
-	s = strings.ReplaceAll(s, "·", "\\u00b7")
-	return s
+	return cellEscaper.Replace(s)
 }
+
+func escapeHeading(s string) string {
+	s = escapeCell(s)
+	trimmed := strings.TrimRight(s, " ")
+	return trimmed + strings.Repeat("&#32;", len(s)-len(trimmed))
+}
+
+// escapeReference guards the table structure of a reference, which comes from
+// the shipped rules rather than the scanned tree, and leaves its URL a working
+// link.
+func escapeReference(s string) string {
+	return referenceEscaper.Replace(s)
+}
+
+var structureEscapes = []string{
+	`\`, `\\`,
+	"|", `\|`,
+	"·", "\\u00b7",
+}
+
+var markupEscapes = []string{
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	"`", "&#96;",
+	"[", "&#91;",
+	"*", "&#42;",
+	"_", "&#95;",
+	"~", "&#126;",
+	"#", "&#35;",
+	"$", "&#36;",
+	"://", "&#58;//",
+	"www.", "www&#46;",
+}
+
+var (
+	cellEscaper      = strings.NewReplacer(slices.Concat(structureEscapes, markupEscapes)...)
+	referenceEscaper = strings.NewReplacer(structureEscapes...)
+)
 
 func writeIncomplete(w io.Writer, c finding.Counts) error {
 	_, err := fmt.Fprintf(w, "**SCAN INCOMPLETE**: %s (see stderr); capabilities may be missing.\n\n", report.DegradedClause(c))

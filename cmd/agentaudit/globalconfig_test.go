@@ -13,10 +13,12 @@ import (
 	"testing/fstest"
 
 	"github.com/manifold-security/agentaudit/adapter"
+	"github.com/manifold-security/agentaudit/finding"
 	"github.com/manifold-security/agentaudit/internal/adapters/claude"
 	"github.com/manifold-security/agentaudit/internal/adapters/codex"
 	"github.com/manifold-security/agentaudit/internal/adapters/cursor"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	mdreport "github.com/manifold-security/agentaudit/internal/report/md"
 )
 
 type stubBaseAdapter struct{ agent adapter.AgentID }
@@ -998,9 +1000,22 @@ func TestRun_GlobalConfig_MDFileHoldsOnlyTheHomeDocument(t *testing.T) {
 		t.Fatalf("ReadFile(%s) error = %v", mdReportFilename, err)
 	}
 	out := string(data)
-	if got := strings.Count(out, "# agentaudit ·"); got != 1 || !strings.Contains(out, "# agentaudit · "+home) {
+	want := mdHeading(t, home)
+	if want == mdHeading(t, ".") {
+		t.Fatalf("H1 for %q = %q, the same as for \".\", want it to name the path", home, want)
+	}
+	if got := strings.Count(out, "# agentaudit ·"); got != 1 || !strings.Contains(out, want) {
 		t.Fatalf("%s = %q, want exactly one document, the home's", mdReportFilename, out)
 	}
+}
+
+func mdHeading(t *testing.T, path string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := mdreport.Write(&buf, finding.NewReport(nil), mdreport.Meta{Path: path}); err != nil {
+		t.Fatalf("mdreport.Write() error = %v", err)
+	}
+	return strings.SplitN(buf.String(), "\n", 2)[0]
 }
 
 // A projects.<path> entry in ~/.claude.json is reported under .claude.json
