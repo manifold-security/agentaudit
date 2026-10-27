@@ -32,7 +32,7 @@ network:
     mcp.http
 
 secrets:
-  envVar API_KEY · sk-live-123 · .claude/settings.json:env.API_KEY
+  envVar API_KEY · *** · .claude/settings.json:env.API_KEY
     env.secret
   credentialHelper awsAuthRefresh · aws-refresh.sh · .claude/settings.json:credentialHelper
     credentialhelper.aws
