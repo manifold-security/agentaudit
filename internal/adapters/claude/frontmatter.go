@@ -14,6 +14,7 @@ import (
 	"github.com/manifold-security/agentaudit/internal/ir"
 	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
+	"github.com/manifold-security/agentaudit/internal/yamlconf"
 )
 
 const agentsDir = ".claude/agents"
@@ -46,11 +47,11 @@ type subagentFrontmatter struct {
 // budget, before any resolver decodes them: yaml.v3 meters aliases per Decode
 // call, and the resolvers decode one item at a time.
 func decodeFrontmatter(block []byte, out any, room int) error {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(block, &doc); err != nil {
+	doc, err := yamlconf.Parse(block)
+	if err != nil {
 		return err
 	}
-	switch n := aliasedNodes(&doc, min(room, maxAliasedNodes)); {
+	switch n := aliasedNodes(doc, min(room, maxAliasedNodes)); {
 	case n > room:
 		return limits.Faults(n, fmt.Errorf("aliases expand past %d nodes", room))
 	case n > maxAliasedNodes:

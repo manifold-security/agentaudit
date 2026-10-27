@@ -35,13 +35,12 @@ func permitted(imp string, tokens []string) bool {
 	return false
 }
 
-// yamlAdapterPackages enumerates the packages allowed to import
-// yamlV3Import. Frontmatter is a YAML document, so an adapter that parses one
-// needs the decoder; naming them is what lets the sweep below reject that
-// import from every other package this module owns.
-var yamlAdapterPackages = []string{
+// yamlPackages enumerates the packages allowed to import yamlV3Import:
+// yamlconf parses YAML, and an adapter that walks the node tree it returns
+// needs the decoder's types too.
+var yamlPackages = []string{
 	modulePath + "/internal/adapters/claude",
-	modulePath + "/internal/adapters/cursor",
+	modulePath + "/internal/yamlconf",
 }
 
 const yamlV3Import = "gopkg.in/yaml.v3"
@@ -176,10 +175,10 @@ func sweep(t *testing.T, graph map[string][]string) {
 	}
 
 	for _, pkg := range guarded {
-		if !slices.Contains(yamlAdapterPackages, pkg) {
+		if !slices.Contains(yamlPackages, pkg) {
 			for _, imp := range graph[pkg] {
 				if imp == yamlV3Import {
-					t.Fatalf("%s imports %q, which is confined to %v", pkg, yamlV3Import, yamlAdapterPackages)
+					t.Fatalf("%s imports %q, which is confined to %v", pkg, yamlV3Import, yamlPackages)
 				}
 			}
 		}
@@ -215,12 +214,12 @@ func sweep(t *testing.T, graph map[string][]string) {
 // Each package the allowance names reaches the decoder, so the allowance
 // describes a dependency that is really there rather than widening the
 // sweep's exception for nothing.
-func TestOSIsolation_EveryYAMLAdapterPackageImportsYAMLv3(t *testing.T) {
-	if len(yamlAdapterPackages) == 0 {
-		t.Fatal("yamlAdapterPackages is empty; this guard would check nothing")
+func TestOSIsolation_EveryYAMLPackageImportsYAMLv3(t *testing.T) {
+	if len(yamlPackages) == 0 {
+		t.Fatal("yamlPackages is empty; this guard would check nothing")
 	}
 
-	for _, pkg := range yamlAdapterPackages {
+	for _, pkg := range yamlPackages {
 		t.Run(pkg, func(t *testing.T) {
 			imports := packageImports(t, pkg)
 

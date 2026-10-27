@@ -12,6 +12,7 @@ import (
 
 	"github.com/manifold-security/agentaudit"
 	"github.com/manifold-security/agentaudit/finding"
+	"github.com/manifold-security/agentaudit/internal/yamlconf"
 )
 
 const defaultMaxEntities = 10000
@@ -578,7 +579,7 @@ func TestWithMaxEntitiesStopsExpandingFrontmatterAliasesAtTheBudget(t *testing.T
 		return "hooks:\n  E:\n    - &a\n      matcher: x\n      hooks:\n" + strings.Repeat("        - {}\n", items) + aliases("    - *a #%d\n", n)
 	}
 	env := func(n int) string {
-		return "mcpServers:\n  s: &x\n    command: c\n    env:\n" + aliases("      k%d: v\n", items) + aliases("  a%d: *x\n", n)
+		return "mcpServers:\n  - s: &x\n      command: c\n      env:\n" + aliases("        k%d: v\n", items) + aliases("  - a%d: *x\n", n)
 	}
 
 	for _, tc := range []struct {
@@ -690,25 +691,25 @@ func TestWithMaxEntitiesChargesEachValueAnEntityHolds(t *testing.T) {
 }
 
 // A frontmatter file refused for its faults stops writing their text once
-// they pass the budget, where an admitted one writes on to the text cap.
+// they pass the budget, where an admitted one writes on.
 func TestWithMaxEntitiesStopsWritingTheFaultsOfARefusedFile(t *testing.T) {
 	const faults = 3000
-	var events, servers strings.Builder
-	for i := range faults {
-		fmt.Fprintf(&events, "  E%d: 1\n", i)
+	var servers strings.Builder
+	for i := range yamlconf.MaxMappingKeys {
 		fmt.Fprintf(&servers, "  s%d: [1]\n", i)
 	}
-	hooks := "hooks:\n" + events.String()
+	hooks := "hooks:\n  E:\n" + strings.Repeat("    - 1\n", faults)
 
 	for _, tc := range []struct {
 		name, file, frontmatter string
+		faults                  int
 	}{
-		{"agent mcpServers list", ".claude/agents/a.md", "name: a\nmcpServers:\n" + strings.Repeat("  - 0\n", faults)},
-		{"agent mcpServers mapping", ".claude/agents/a.md", "name: a\nmcpServers:\n" + servers.String()},
-		{"agent tools", ".claude/agents/a.md", "name: a\ntools:\n" + strings.Repeat("  - {a: 1}\n", faults)},
-		{"agent hooks", ".claude/agents/a.md", "name: a\n" + hooks},
-		{"skill hooks", ".claude/skills/s/SKILL.md", "name: s\n" + hooks},
-		{"command hooks", ".claude/commands/c.md", hooks},
+		{"agent mcpServers list", ".claude/agents/a.md", "name: a\nmcpServers:\n" + strings.Repeat("  - 0\n", faults), faults},
+		{"agent mcpServers mapping", ".claude/agents/a.md", "name: a\nmcpServers:\n" + servers.String(), yamlconf.MaxMappingKeys},
+		{"agent tools", ".claude/agents/a.md", "name: a\ntools:\n" + strings.Repeat("  - {a: 1}\n", faults), faults},
+		{"agent hooks", ".claude/agents/a.md", "name: a\n" + hooks, faults},
+		{"skill hooks", ".claude/skills/s/SKILL.md", "name: s\n" + hooks, faults},
+		{"command hooks", ".claude/commands/c.md", hooks, faults},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tree := treeOf(map[string]string{tc.file: "---\n" + tc.frontmatter + "---\n"})
@@ -721,9 +722,9 @@ func TestWithMaxEntitiesStopsWritingTheFaultsOfARefusedFile(t *testing.T) {
 				})
 			}
 
-			refused, admitted := allocs(1), allocs(2*faults)
-			if admitted-refused < faults/4 {
-				t.Errorf("refused file allocates %.0f, admitted one %.0f, want the refused one at least %d fewer", refused, admitted, faults/4)
+			refused, admitted := allocs(1), allocs(2*tc.faults)
+			if admitted-refused < float64(tc.faults/4) {
+				t.Errorf("refused file allocates %.0f, admitted one %.0f, want the refused one at least %d fewer", refused, admitted, tc.faults/4)
 			}
 		})
 	}
@@ -737,8 +738,8 @@ func TestWithMaxEntitiesStopsFaultTextAtItsCapThroughAnAliasedKey(t *testing.T) 
 		faults = 1000
 		spent  = faults + 2
 	)
-	tree := treeOf(map[string]string{file: "---\nname: a\nmcpServers:\n  ? &k " + strings.Repeat("k", 4<<10) + "\n  : {command: c}\n" +
-		strings.Repeat("  *k : {args: 5}\n", faults) + "---\n"})
+	tree := treeOf(map[string]string{file: "---\nname: a\nmcpServers:\n  - ? &k " + strings.Repeat("k", 4<<10) + "\n    : {command: c}\n" +
+		strings.Repeat("  - *k : {args: 5}\n", faults) + "---\n"})
 
 	_, warnings := warnedScan(t, projectScan, tree, agentaudit.WithMaxEntities(spent))
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "cannot unmarshal") || len(warnings[0]) > 128<<10 {
