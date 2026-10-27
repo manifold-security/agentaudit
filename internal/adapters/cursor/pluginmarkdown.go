@@ -8,12 +8,11 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
 	"github.com/manifold-security/agentaudit/internal/limits"
+	"github.com/manifold-security/agentaudit/internal/yamlconf"
 )
 
 const (
@@ -361,7 +360,7 @@ func frontmatterName(data []byte) (name string, found bool, err error) {
 	var fm struct {
 		Name string `yaml:"name"`
 	}
-	if uerr := yaml.Unmarshal(block, &fm); uerr != nil {
+	if uerr := yamlconf.Unmarshal(block, &fm); uerr != nil {
 		return "", true, fmt.Errorf("frontmatter: %w", uerr)
 	}
 	return fm.Name, true, nil
