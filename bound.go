@@ -94,6 +94,13 @@ type boundFS struct {
 
 func (b boundFS) EntityBudget() *limits.Entities { return b.entities }
 
+func (b boundFS) ScanEnd() limits.End {
+	if err := b.ctx.Err(); err != nil {
+		return limits.End{Err: err}
+	}
+	return limits.End{Err: limits.Ended(b.fsys)}
+}
+
 func (b boundFS) done(op, name string) error {
 	if err := b.ctx.Err(); err != nil {
 		return &fs.PathError{Op: op, Path: name, Err: err}

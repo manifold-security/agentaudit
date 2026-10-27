@@ -29,7 +29,7 @@ type payloadCandidate struct {
 	Executable bool
 }
 
-// refSource holds raw bytes rather than parsed frontmatter, so correlation
+// refSource holds text rather than parsed frontmatter, so correlation
 // survives malformed YAML.
 type refSource struct{ File, Text string }
 
@@ -159,15 +159,13 @@ func indexMarkdown(fsys fs.FS, root, p string, idx *refIndex) {
 	if err != nil {
 		return
 	}
-	src := refSource{File: p, Text: string(data)}
-
 	switch root {
 	case skillsDir:
 		if path.Base(p) == skillFileName {
-			idx.skills[path.Dir(p)] = src
+			idx.skills[path.Dir(p)] = refSource{File: p, Text: expandDirVars(string(data), dirVars{Skill: path.Dir(p)})}
 		}
 	case commandsDir:
-		idx.commands = append(idx.commands, src)
+		idx.commands = append(idx.commands, refSource{File: p, Text: expandDirVars(string(data), dirVars{Skill: "."})})
 	}
 }
 
@@ -215,8 +213,6 @@ func (idx *refIndex) resolveCommand(p string) (string, string) {
 // mentions requires a dot in the base name it matches: widening to
 // extension-less names would match bare words in incidental prose.
 func mentions(text, ownerDir, payloadPath string) bool {
-	text = expandDirVars(text, dirVars{Skill: ownerDir})
-
 	if strings.Contains(text, payloadPath) {
 		return true
 	}
@@ -298,6 +294,9 @@ func payloadEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	var entities []ir.Entity
 	for _, candidates := range perRoot {
 		for _, c := range candidates {
+			if err := limits.Ended(fsys); err != nil {
+				return nil, nil, err
+			}
 			executableValue := ""
 			if c.Executable {
 				executableValue = "true"

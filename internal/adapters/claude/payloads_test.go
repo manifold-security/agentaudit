@@ -2,7 +2,9 @@ package claude
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path"
 	"reflect"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 func payloadEntitiesOK(t *testing.T, fsys fs.FS) []ir.BundledPayload {
@@ -467,7 +470,8 @@ func TestReferenceCorrelator_Matrix(t *testing.T) {
 		{"sibling reference.md is never an owner", fstest.MapFS{".claude/skills/demo/SKILL.md": {Data: []byte(fm + "No mention.\n")}, ".claude/skills/demo/reference.md": {Data: []byte("See scripts/x.sh for details.\n")}, x: {Data: []byte("#!/bin/sh")}}, x, ""},
 		{"commands-tree first indexed match wins", fstest.MapFS{".claude/commands/aaa.md": {Data: []byte("---\nname: aaa\n---\nRun ${CLAUDE_PROJECT_DIR}/.claude/commands/tool\n")}, ".claude/commands/bbb.md": {Data: []byte("---\nname: bbb\n---\nRun ${CLAUDE_PROJECT_DIR}/.claude/commands/tool\n")}, ".claude/commands/tool": {Data: []byte("bin"), Mode: 0o755}}, ".claude/commands/tool", ".claude/commands/aaa.md"},
 		{"cross-root correlation is not attempted", fstest.MapFS{".claude/commands/deploy.md": {Data: []byte("---\nname: deploy\n---\nRun " + x + "\n")}, ".claude/skills/demo/SKILL.md": {Data: []byte(fm + "No mention.\n")}, x: {Data: []byte("#!/bin/sh")}}, x, ""},
-		{"malformed frontmatter YAML still correlates via raw bytes", fstest.MapFS{".claude/skills/demo/SKILL.md": {Data: []byte("---\nname: [unterminated\n---\nRun scripts/x.sh\n")}, x: {Data: []byte("#!/bin/sh")}}, x, ".claude/skills/demo/SKILL.md"},
+		{"malformed frontmatter YAML still correlates via unparsed text", fstest.MapFS{".claude/skills/demo/SKILL.md": {Data: []byte("---\nname: [unterminated\n---\nRun scripts/x.sh\n")}, x: {Data: []byte("#!/bin/sh")}}, x, ".claude/skills/demo/SKILL.md"},
+		{"a payload named after a directory variable is not referenced by that variable", fstest.MapFS{".claude/skills/demo/SKILL.md": {Data: []byte(fm + "Run $CLAUDE_PROJECT_DIR.sh\n")}, ".claude/skills/demo/$CLAUDE_PROJECT_DIR.sh": {Data: []byte("#!/bin/sh")}}, ".claude/skills/demo/$CLAUDE_PROJECT_DIR.sh", ""},
 		{"no mention anywhere leaves Referenced empty", fstest.MapFS{".claude/skills/demo/SKILL.md": {Data: []byte(fm + "Nothing relevant here.\n")}, x: {Data: []byte("#!/bin/sh")}}, x, ""},
 	}
 
@@ -575,6 +579,98 @@ func TestReferenceCorrelatorSurvivesEitherWalkOrder(t *testing.T) {
 				t.Errorf("Referenced=%q ReferencedBy=%q, want %q and %q", gotOwnerFirst.Referenced, gotOwnerFirst.ReferencedBy, "true", tt.ownerPath)
 			}
 		})
+	}
+}
+
+type endingFS struct {
+	m    fstest.MapFS
+	live int
+}
+
+func (f *endingFS) Open(name string) (fs.File, error) { return f.m.Open(name) }
+
+func (f *endingFS) ScanEnd() limits.End {
+	if f.live > 0 {
+		f.live--
+		return limits.End{}
+	}
+	return limits.End{Err: context.DeadlineExceeded}
+}
+
+// A scan that has ended stops correlation between one payload and the next,
+// under either payload root.
+func TestPayloadEntitiesStopOnceTheirScanHasEnded(t *testing.T) {
+	for _, root := range []struct {
+		name, owner, referenced, unreferenced string
+	}{
+		{"commands", ".claude/commands/deploy.md", ".claude/commands/scripts/a.sh", ".claude/commands/x/b.sh"},
+		{"skills", ".claude/skills/demo/SKILL.md", ".claude/skills/demo/scripts/a.sh", ".claude/skills/demo/x/b.sh"},
+	} {
+		tree := fstest.MapFS{
+			root.owner:        {Data: []byte("Run scripts/a.sh\n")},
+			root.referenced:   {Data: []byte("#!/bin/sh")},
+			root.unreferenced: {Data: []byte("#!/bin/sh")},
+		}
+		payloads := 2
+
+		for _, tt := range []struct {
+			name string
+			live int
+		}{
+			{"ended before the first payload", 0},
+			{"ended after the first payload", 1},
+		} {
+			t.Run(root.name+"/"+tt.name, func(t *testing.T) {
+				entities, _, err := payloadEntities(&endingFS{m: tree, live: tt.live})
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("payloadEntities() error = %v, want context.DeadlineExceeded", err)
+				}
+				if entities != nil {
+					t.Errorf("payloadEntities() entities = %+v, want none once the scan has ended", entities)
+				}
+			})
+		}
+
+		t.Run(root.name+"/a scan that runs on correlates every payload", func(t *testing.T) {
+			got := payloadEntitiesOK(t, &endingFS{m: tree, live: payloads})
+			if len(got) != payloads {
+				t.Fatalf("payloadEntities() = %+v, want %d payloads", got, payloads)
+			}
+			if a := findPayload(t, got, root.referenced); a.ReferencedBy != root.owner {
+				t.Errorf("%s ReferencedBy = %q, want %q", root.referenced, a.ReferencedBy, root.owner)
+			}
+			if b := findPayload(t, got, root.unreferenced); b.Referenced != "" {
+				t.Errorf("%s Referenced = %q, want empty", root.unreferenced, b.Referenced)
+			}
+		})
+	}
+}
+
+// A command file costs correlation no more allocations beside many payloads
+// than beside one.
+func TestPayloadCorrelationAllocatesPerFileNotPerPair(t *testing.T) {
+	allocs := func(files, payloads int) float64 {
+		fsys := fstest.MapFS{}
+		for i := range files {
+			fsys[fmt.Sprintf(".claude/commands/c%02d.md", i)] = &fstest.MapFile{Data: []byte("Run ${CLAUDE_PROJECT_DIR}/bin/tool\n")}
+		}
+		for i := range payloads {
+			fsys[fmt.Sprintf(".claude/commands/x/p%02d.sh", i)] = &fstest.MapFile{Data: []byte("#!/bin/sh")}
+		}
+		if got := payloadEntitiesOK(t, fsys); len(got) != payloads || slices.ContainsFunc(got, func(p ir.BundledPayload) bool { return p.Referenced != "" }) {
+			t.Fatalf("payloadEntities() = %+v, want %d unreferenced payloads", got, payloads)
+		}
+		return testing.AllocsPerRun(10, func() { _, _, _ = payloadEntities(fsys) })
+	}
+	const fewFiles, moreFiles, manyPayloads = 1, 8, 64
+	extraFiles := func(payloads int) float64 { return allocs(moreFiles, payloads) - allocs(fewFiles, payloads) }
+
+	one, many := extraFiles(1), extraFiles(manyPayloads)
+	if one <= 0 {
+		t.Fatalf("%d more command files cost %v allocations beside one payload, want some", moreFiles-fewFiles, one)
+	}
+	if many > one {
+		t.Errorf("%d more command files cost %v allocations beside %d payloads but %v beside one, want no more", moreFiles-fewFiles, many, manyPayloads, one)
 	}
 }
 

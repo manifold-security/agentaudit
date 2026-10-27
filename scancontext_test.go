@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/manifold-security/agentaudit"
+	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/finding"
+	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
 type countingFS struct {
@@ -187,6 +190,118 @@ func TestScanContextDiscardsAScanCancelledAtAnyCall(t *testing.T) {
 				if len(late) != 0 {
 					t.Errorf("cancel at call %d of %d: warned %v after the cancel", n, total, late)
 				}
+			}
+		})
+	}
+}
+
+type endWatchAdapter struct {
+	cancel context.CancelFunc
+	seen   *[]error
+}
+
+func (endWatchAdapter) Agent() adapter.AgentID { return adapter.AgentID("end-watch") }
+
+func (endWatchAdapter) Signatures() []adapter.Signature {
+	return []adapter.Signature{{Dir: ".watch", File: "config.json"}}
+}
+
+func (a endWatchAdapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
+	*a.seen = append(*a.seen, limits.Ended(fsys))
+	a.cancel()
+	*a.seen = append(*a.seen, limits.Ended(fsys))
+	return nil, nil, nil
+}
+
+// An adapter sees its ScanContext end through the fsys its parse is handed,
+// with or without an entity budget bound around that fsys.
+func TestScanContextEndReachesTheAdapterParse(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts []agentaudit.Option
+	}{
+		{"default entity budget", nil},
+		{"no entity budget", []agentaudit.Option{agentaudit.WithMaxEntities(0)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var seen []error
+			s := agentaudit.New(append(tc.opts, agentaudit.WithAdapters(endWatchAdapter{cancel: cancel, seen: &seen}))...)
+
+			_, err := s.ScanContext(ctx, fstest.MapFS{".watch/config.json": {Data: []byte("{}")}})
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("ScanContext() error = %v, want context.Canceled", err)
+			}
+			if want := []error{nil, context.Canceled}; !reflect.DeepEqual(seen, want) {
+				t.Errorf("Parse saw limits.Ended() = %v before and after the cancel, want %v", seen, want)
+			}
+		})
+	}
+}
+
+var errClaimedEnd = errors.New("the scanned FS's own end")
+
+type scanErrClaimFS struct{ *countingFS }
+
+func (scanErrClaimFS) ScanErr() error { return errClaimedEnd }
+
+type scanEndErrClaimFS struct{ *countingFS }
+
+func (scanEndErrClaimFS) ScanEnd() error { return errClaimedEnd }
+
+type scanEndStructClaimFS struct{ *countingFS }
+
+func (scanEndStructClaimFS) ScanEnd() struct{ Err error } { return struct{ Err error }{errClaimedEnd} }
+
+type limitsEndClaimFS struct{ *countingFS }
+
+func (limitsEndClaimFS) ScanEnd() limits.End { return limits.End{Err: errClaimedEnd} }
+
+// A scanned fs.FS claiming its scan has ended, through a method a package
+// outside agentaudit's import path can write, is scanned exactly as the same
+// tree making no claim; the same claim made through limits.End changes what
+// the scan reports.
+func TestScanIgnoresAnEndClaimAnOutsidePackageCanWrite(t *testing.T) {
+	tree := fstest.MapFS{
+		".claude/skills/demo/SKILL.md":       {Data: []byte("---\nname: demo\n---\nRun scripts/run.sh\n")},
+		".claude/skills/demo/scripts/run.sh": {Data: []byte("#!/bin/sh")},
+	}
+	live, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	claims := []struct {
+		method string
+		wrap   func(*countingFS) fs.FS
+	}{
+		{"ScanErr() error", func(c *countingFS) fs.FS { return scanErrClaimFS{c} }},
+		{"ScanEnd() error", func(c *countingFS) fs.FS { return scanEndErrClaimFS{c} }},
+		{"ScanEnd() struct{ Err error }", func(c *countingFS) fs.FS { return scanEndStructClaimFS{c} }},
+	}
+
+	for _, tc := range []struct {
+		name string
+		scan func(fs.FS) (agentaudit.Report, error)
+	}{
+		{"Scan", agentaudit.New().Scan},
+		{"ScanContext", func(fsys fs.FS) (agentaudit.Report, error) { return agentaudit.New().ScanContext(live, fsys) }},
+		{"Scan with every limit off", agentaudit.New(agentaudit.WithMaxFileSize(0), agentaudit.WithMaxReadBytes(0), agentaudit.WithMaxEntities(0)).Scan},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := tc.scan(&countingFS{m: tree})
+			if err != nil || !want.HasFindings() {
+				t.Fatalf("scan of the tree = %+v, %v, want its payload found", want, err)
+			}
+			for _, claim := range claims {
+				got, err := tc.scan(claim.wrap(&countingFS{m: tree}))
+				if err != nil {
+					t.Fatalf("scan of the tree claiming its end through %s error = %v, want nil", claim.method, err)
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("scan of the tree claiming its end through %s = %+v, want %+v", claim.method, got, want)
+				}
+			}
+			if got, _ := tc.scan(limitsEndClaimFS{&countingFS{m: tree}}); reflect.DeepEqual(got, want) {
+				t.Errorf("scan of the tree reporting its end through limits.End = %+v, want it to differ from %+v", got, want)
 			}
 		})
 	}

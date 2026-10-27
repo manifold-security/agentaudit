@@ -108,6 +108,19 @@ type Carrier interface {
 	EntityBudget() *Entities
 }
 
+// End is the scan end ScanEnd reports. Code outside agentaudit's import path
+// cannot name it, so an accidental look-alike cannot end a scan.
+type End struct{ Err error }
+
+// Ended returns the error that ended the scan fsys belongs to, or nil while
+// that scan runs or when fsys belongs to none.
+func Ended(fsys fs.FS) error {
+	if s, ok := fsys.(interface{ ScanEnd() End }); ok {
+		return s.ScanEnd().Err
+	}
+	return nil
+}
+
 // Of returns the budget fsys carries, or nil when it carries none.
 func Of(fsys fs.FS) *Entities {
 	if c, ok := fsys.(Carrier); ok {
