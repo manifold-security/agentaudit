@@ -211,6 +211,192 @@ func TestWalkTree_SymlinkResolutionBudgetExhaustionWarnsAndContinuesWalk(t *test
 	}
 }
 
+// Links back to their own directory add at most the visit cap to the walk:
+// its warnings stay within one per visit plus one per stopped descent, the
+// stopped descents are refused by name, and the walk still reaches what lies
+// past the links.
+func TestWalkTree_SelfLinkedDirectoryAddsAtMostTheVisitCap(t *testing.T) {
+	const dangling, selfLinks = 1000, 3
+	fsys := fstest.MapFS{
+		"zz-plain/inside.txt": &fstest.MapFile{Data: []byte("x")},
+	}
+	for i := range dangling {
+		fsys[fmt.Sprintf("cmds/c%04d.md", i)] = &fstest.MapFile{Data: []byte("nowhere"), Mode: fs.ModeSymlink}
+	}
+	for i := range selfLinks {
+		fsys[fmt.Sprintf("cmds/z%d", i)] = &fstest.MapFile{Data: []byte("."), Mode: fs.ModeSymlink}
+	}
+	listed := listedWithoutLinks(t, fsys)
+	limit := max(listed, symlinkVisitFloor)
+
+	visits := 0
+	var visitedPlain bool
+	warnings, _, err := walkTree(fsys, func(p string, d fs.DirEntry) error {
+		visits++
+		visitedPlain = visitedPlain || p == "zz-plain/inside.txt"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walkTree() error = %v, want nil", err)
+	}
+	if beneath := visits - listed; beneath != limit {
+		t.Fatalf("visited %d entries beneath resolved links, want the cap of %d", beneath, limit)
+	}
+	if most := listed + limit + symlinkResolutionBudget; len(warnings) > most {
+		t.Fatalf("walk retained %d warnings, want at most %d (one per visit, plus one per stopped descent)", len(warnings), most)
+	}
+	if !visitedPlain {
+		t.Fatal("zz-plain/inside.txt never visited, want the walk to continue past the spent budget")
+	}
+	refused := 0
+	for _, w := range warnings {
+		if errors.Is(w.Err, adapter.ErrUnreadable) {
+			if !strings.HasPrefix(w.File, "cmds/z") {
+				t.Fatalf("refused %q, want only the links", w.File)
+			}
+			refused++
+		}
+	}
+	if refused == 0 {
+		t.Fatal("no refusal, want the spent budget to stop the links")
+	}
+}
+
+// The cap is inclusive whether the floor or the listing sets it, and a
+// stopped descent also skips the subdirectories after it.
+func TestWalkTree_LinkVisitCapIsTheFloorOrTheListedEntryCount(t *testing.T) {
+	const half = symlinkVisitFloor / 2
+	tests := []struct {
+		name           string
+		links, files   int
+		plain          int
+		subdirsAfter   bool
+		wantBeneath    int
+		wantRefused    []string
+		wantUnfollowed []string
+	}{
+		{name: "at the floor", links: 2, files: half, wantBeneath: symlinkVisitFloor},
+		{name: "one past the floor", links: 2, files: half + 1, wantBeneath: symlinkVisitFloor, wantRefused: []string{"link2"}},
+		{name: "at a listing past the floor", links: 2, files: half + 5, plain: half, wantBeneath: symlinkVisitFloor + 10},
+		{name: "one past a listing past the floor", links: 2, files: half + 6, plain: half, wantBeneath: symlinkVisitFloor + 11, wantRefused: []string{"link2"}},
+		{name: "links met once the cap is spent", links: 4, files: half, wantBeneath: symlinkVisitFloor, wantRefused: []string{"link3", "link4"}, wantUnfollowed: []string{"link3", "link4"}},
+		{name: "subdirectories after a stopped descent", links: 2, files: half, subdirsAfter: true, wantBeneath: symlinkVisitFloor, wantRefused: []string{"link2"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := fstest.MapFS{}
+			filesDir := "real"
+			if tt.subdirsAfter {
+				filesDir = "real/a"
+				fsys["real/b/x"] = &fstest.MapFile{Data: []byte("x")}
+				fsys["real/c/x"] = &fstest.MapFile{Data: []byte("x")}
+			}
+			for i := range tt.files {
+				fsys[fmt.Sprintf("%s/f%05d", filesDir, i)] = &fstest.MapFile{Data: []byte("x")}
+			}
+			for i := range tt.plain {
+				fsys[fmt.Sprintf("plain/e%05d", i)] = &fstest.MapFile{Data: []byte("x")}
+			}
+			for i := 1; i <= tt.links; i++ {
+				fsys[fmt.Sprintf("link%d", i)] = &fstest.MapFile{Data: []byte("real"), Mode: fs.ModeSymlink}
+			}
+			listed := listedWithoutLinks(t, fsys)
+
+			visits := 0
+			var unfollowed []string
+			warnings, _, err := walkTree(fsys, func(p string, d fs.DirEntry) error {
+				visits++
+				if d.Type()&fs.ModeSymlink != 0 {
+					unfollowed = append(unfollowed, p)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("walkTree() error = %v, want nil", err)
+			}
+			if beneath := visits - listed; beneath != tt.wantBeneath {
+				t.Fatalf("visited %d entries beneath resolved links, want %d (the tree lists %d)", beneath, tt.wantBeneath, listed)
+			}
+			var refused []string
+			for _, w := range warnings {
+				if !errors.Is(w.Err, adapter.ErrUnreadable) {
+					t.Fatalf("warning %+v is not a refusal, want only budget refusals here", w)
+				}
+				refused = append(refused, w.File)
+			}
+			if fmt.Sprint(refused) != fmt.Sprint(tt.wantRefused) {
+				t.Fatalf("refused %v, want %v", refused, tt.wantRefused)
+			}
+			if fmt.Sprint(unfollowed) != fmt.Sprint(tt.wantUnfollowed) {
+				t.Fatalf("visited %v unfollowed, want %v", unfollowed, tt.wantUnfollowed)
+			}
+		})
+	}
+}
+
+type readDirCountingWalkFS struct {
+	m     fstest.MapFS
+	reads *int
+}
+
+func (f readDirCountingWalkFS) Open(name string) (fs.File, error)     { return f.m.Open(name) }
+func (f readDirCountingWalkFS) Stat(name string) (fs.FileInfo, error) { return f.m.Stat(name) }
+
+func (f readDirCountingWalkFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	*f.reads++
+	return f.m.ReadDir(name)
+}
+
+// The tree is listed for the cap only once links spend symlinkVisitFloor:
+// below it the walk reads just the directories it walks, and one visit past
+// it reads the tree once more.
+func TestWalkTree_ListsTheTreeOnlyOnceLinksSpendTheFloor(t *testing.T) {
+	tests := []struct {
+		name      string
+		files     int
+		wantReads int
+	}{
+		{"under the floor", 3, 4},
+		{"past the floor", symlinkVisitFloor/2 + 1, 6},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := fstest.MapFS{
+				"link1": &fstest.MapFile{Data: []byte("real"), Mode: fs.ModeSymlink},
+				"link2": &fstest.MapFile{Data: []byte("real"), Mode: fs.ModeSymlink},
+			}
+			for i := range tt.files {
+				m[fmt.Sprintf("real/f%05d", i)] = &fstest.MapFile{Data: []byte("x")}
+			}
+			reads := 0
+			if _, _, err := walkTree(readDirCountingWalkFS{m: m, reads: &reads}, func(string, fs.DirEntry) error { return nil }); err != nil {
+				t.Fatalf("walkTree() error = %v, want nil", err)
+			}
+			if reads != tt.wantReads {
+				t.Fatalf("walk read %d directories, want %d", reads, tt.wantReads)
+			}
+		})
+	}
+}
+
+func listedWithoutLinks(t *testing.T, fsys fs.FS) int {
+	t.Helper()
+	n := 0
+	err := fs.WalkDir(fsys, ".", func(_ string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		n++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("listing the fixture: %v", err)
+	}
+	return n
+}
+
 // Measures resolution cost for a fixture shaped like real usage: several
 // projects, each symlinking one of its own config directories. The margin
 // between that cost and symlinkResolutionBudget is the safety margin the

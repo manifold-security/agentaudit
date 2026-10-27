@@ -560,3 +560,61 @@ func TestDiscoverDerivesPluginRootsFromDepthAgnosticSignatures(t *testing.T) {
 		})
 	}
 }
+
+type signedAdapter struct {
+	agent adapter.AgentID
+	sigs  []adapter.Signature
+}
+
+func (a signedAdapter) Agent() adapter.AgentID          { return a.agent }
+func (a signedAdapter) Signatures() []adapter.Signature { return a.sigs }
+
+func (signedAdapter) Parse(fs.FS) ([]ir.Entity, []adapter.Warning, error) { return nil, nil, nil }
+
+// A link stopped mid-descent and one refused before resolving both yield
+// Sources; the anchor match respects a segment boundary, and an any-depth
+// signature is no anchor.
+func TestDiscover_CappedLinkStillYieldsTheAdaptersAnchoredBeneathIt(t *testing.T) {
+	adapters := []adapter.Adapter{
+		signedAdapter{agent: adapter.AgentCursor, sigs: []adapter.Signature{{Dir: ".cursor", File: "mcp.json"}}},
+		signedAdapter{agent: adapter.AgentClaudeCode, sigs: []adapter.Signature{{Dir: ".cursor/skills", Recursive: true}}},
+		signedAdapter{agent: adapter.AgentCodex, sigs: []adapter.Signature{{Dir: ".cursor-x", File: "mcp.json"}}},
+		signedAdapter{agent: adapter.AgentID("other-agent"), sigs: []adapter.Signature{{Dir: ".cursor/plugin", File: "plugin.json", AnyDepth: true}}},
+	}
+	tests := []struct {
+		name  string
+		links []string
+		files int
+	}{
+		{"stopped mid-descent", []string{".a-big", ".cursor"}, symlinkVisitFloor/2 + 10},
+		{"refused before resolving", []string{".a-big", ".b-big", ".cursor"}, symlinkVisitFloor/2 - 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := fstest.MapFS{"data/mcp.json": &fstest.MapFile{Data: []byte("{}")}}
+			for i := range tt.files {
+				fsys[fmt.Sprintf("data/aaa/f%05d", i)] = &fstest.MapFile{Data: []byte("x")}
+			}
+			for _, l := range tt.links {
+				fsys[l] = &fstest.MapFile{Data: []byte("data"), Mode: fs.ModeSymlink}
+			}
+
+			got, warnings, err := Discover(fsys, adapters)
+			if err != nil {
+				t.Fatalf("Discover() error = %v, want nil", err)
+			}
+			capped := false
+			for _, w := range warnings {
+				capped = capped || w.File == ".cursor" && errors.Is(w.Err, adapter.ErrUnreadable)
+			}
+			if !capped {
+				t.Fatalf("warnings = %d, want one refusing .cursor", len(warnings))
+			}
+			want := []Source{{Path: ".cursor", Agent: adapter.AgentClaudeCode}, {Path: ".cursor", Agent: adapter.AgentCursor}}
+			if fmt.Sprint(got.Sources) != fmt.Sprint(want) {
+				t.Fatalf("Sources = %v, want %v", got.Sources, want)
+			}
+		})
+	}
+}

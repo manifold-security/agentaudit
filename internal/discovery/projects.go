@@ -9,8 +9,8 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 )
 
-// Projects walks fsys once and returns every directory carrying, at its own
-// top level, an entry whose name matches a marker derived from adapters'
+// Projects walks fsys and returns each directory it reaches carrying, at its
+// own top level, an entry whose name matches a marker derived from adapters'
 // Signatures(). Matching is presence-only: a file named .claude and a
 // directory named .mcp.json qualify like the conventional kind. A matched
 // entry that is itself a directory is not descended, which keeps a .mcp.json
@@ -18,9 +18,8 @@ import (
 // marker name, so .claude-plugin is still descended and a marker inside it
 // still found.
 //
-// Failure and symlink handling are walkTree's, so a marker reached only
-// through a symlinked directory is still found. Projects deliberately does
-// not prune a project nested inside another — both are reported.
+// Failure and symlink handling are walkTreeFunc's. Projects deliberately
+// does not prune a project nested inside another — both are reported.
 func Projects(fsys fs.FS, adapters []adapter.Adapter) ([]string, []adapter.Warning, error) {
 	regularMarkers, anyDepthJoins := projectMarkers(adapters)
 

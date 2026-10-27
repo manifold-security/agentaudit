@@ -142,12 +142,14 @@ type warnSink struct {
 	unparsed   int
 }
 
+// newWarnSink takes a nil emit when nothing hears the scan, and then keeps
+// no emission keys: a crafted tree can raise a warning per entry it lists.
 func newWarnSink(emit func(error)) *warnSink {
-	return &warnSink{
-		emit:    emit,
-		emitted: make(map[string]struct{}),
-		counted: make(map[string]struct{}),
+	s := &warnSink{emit: func(error) {}, counted: make(map[string]struct{})}
+	if emit != nil {
+		s.emit, s.emitted = emit, make(map[string]struct{})
 	}
+	return s
 }
 
 // isGenuineReadFailure reports whether err is a source the scanner could not
@@ -181,7 +183,21 @@ func (s *warnSink) source(w adapter.Warning, msg error) {
 			s.unparsed++
 		}
 	}
-	s.emitOnce("source\x00"+w.File+"\x00"+w.Err.Error(), msg)
+	if s.emitted != nil {
+		s.emitOnce("source\x00"+w.File+"\x00"+w.Err.Error(), msg)
+	}
+}
+
+func (s *warnSink) wants(w adapter.Warning) bool {
+	return s.emitted != nil || isGenuineReadFailure(w.Err) || isParseDiscard(w.Err)
+}
+
+func (s *warnSink) sourceFrom(layer string, w adapter.Warning) {
+	var msg error
+	if s.emitted != nil {
+		msg = fmt.Errorf("%s: %s: %w", layer, w.File, w.Err)
+	}
+	s.source(w, msg)
 }
 
 // adapterFailure routes an adapter's trailing Parse error, which carries no
@@ -206,6 +222,9 @@ func (s *warnSink) firstInBucket(bucket, id string) bool {
 }
 
 func (s *warnSink) emitOnce(key string, msg error) {
+	if s.emitted == nil {
+		return
+	}
 	if _, ok := s.emitted[key]; ok {
 		return
 	}
@@ -229,9 +248,6 @@ func (s *Scanner) Scan(fsys fs.FS) (finding.Report, error) {
 }
 
 func (s *Scanner) emitFunc() func(error) {
-	if s.warn == nil {
-		return func(error) {}
-	}
 	return s.warn
 }
 
@@ -258,9 +274,14 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 	warn := sink.emit
 	adapters := s.selectedAdapters()
 
-	disc, discWarnings, err := discovery.Discover(fsys, adapters)
+	var discWarnings []adapter.Warning
+	disc, err := discovery.DiscoverFunc(fsys, adapters, func(w adapter.Warning) {
+		if sink.wants(w) {
+			discWarnings = append(discWarnings, w)
+		}
+	})
 	for _, w := range discWarnings {
-		sink.source(w, fmt.Errorf("agentaudit: discover: %s: %w", w.File, w.Err))
+		sink.sourceFrom("agentaudit: discover", w)
 	}
 	if err != nil {
 		return finding.Report{}, fmt.Errorf("agentaudit: discover: %w", err)
@@ -295,9 +316,10 @@ func (s *Scanner) scanFS(fsys fs.FS, sink *warnSink, p pass) (finding.Report, er
 		budget := limits.NewEntities(s.maxEntities)
 		entities, warnings, err := p.entities(a, bound(context.Background(), fsys, 0, nil, budget, nil))
 		warnings = budget.KeepWarnings(warnings)
+		layer := "agentaudit: parse " + string(a.Agent())
 		for _, w := range warnings {
 			w.Err = limits.JSONDepthRefusal(w.Err)
-			sink.source(w, fmt.Errorf("agentaudit: parse %s: %s: %w", a.Agent(), w.File, w.Err))
+			sink.sourceFrom(layer, w)
 		}
 		if err != nil {
 			sink.adapterFailure(a.Agent(), err, fmt.Errorf("agentaudit: parse %s: %w", a.Agent(), err))

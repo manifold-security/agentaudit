@@ -43,17 +43,24 @@ func WithMaxEntities(n int) Option {
 // ScanContext is Scan bounded by ctx: once ctx is done the scan fails with
 // ctx.Err(), discards what it found and warns nothing more.
 func (s *Scanner) ScanContext(ctx context.Context, fsys fs.FS) (finding.Report, error) {
-	emit := s.emitFunc()
-	sink := newWarnSink(func(w error) {
-		if ctx.Err() == nil {
-			emit(w)
-		}
-	})
+	sink := s.liveSink(ctx)
 	rep, err := s.scanFS(bound(ctx, fsys, s.maxFileSize, newReadBudget(s.maxReadBytes), nil, sink), sink, projectPass{})
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return finding.Report{}, ctxErr
 	}
 	return rep, err
+}
+
+func (s *Scanner) liveSink(ctx context.Context) *warnSink {
+	warn := s.emitFunc()
+	if warn == nil {
+		return newWarnSink(nil)
+	}
+	return newWarnSink(func(w error) {
+		if ctx.Err() == nil {
+			warn(w)
+		}
+	})
 }
 
 // bound mirrors fsys's fs.StatFS and fs.ReadLinkFS: fsguard picks its arm by
