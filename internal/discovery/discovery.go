@@ -1,17 +1,26 @@
 package discovery
 
 import (
+	"errors"
 	"io/fs"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/manifold-security/agentaudit/adapter"
 )
 
-// Discover walks fsys once and returns every adapter-owned Source and plugin
-// root found, sorted and deduplicated. Failure and symlink handling are
-// walkTree's.
+// Discover walks fsys and returns the adapter-owned Sources and plugin roots
+// it finds, sorted and deduplicated, with the warnings DiscoverFunc reports.
 func Discover(fsys fs.FS, adapters []adapter.Adapter) (Result, []adapter.Warning, error) {
+	var warnings []adapter.Warning
+	res, err := DiscoverFunc(fsys, adapters, func(w adapter.Warning) { warnings = append(warnings, w) })
+	return res, warnings, err
+}
+
+// DiscoverFunc is Discover passing each warning to warn as the walk meets it.
+// A capped link yields a Source for each adapter anchored at or beneath it.
+func DiscoverFunc(fsys fs.FS, adapters []adapter.Adapter, warn func(adapter.Warning)) (Result, error) {
 	var srcs []Source
 	var roots []string
 	seenSrc := map[Source]struct{}{}
@@ -21,15 +30,17 @@ func Discover(fsys fs.FS, adapters []adapter.Adapter) (Result, []adapter.Warning
 		sigs[i] = a.Signatures()
 	}
 	manifestJoins := pluginManifestJoins(sigs)
+	addSource := func(s Source) {
+		if _, dup := seenSrc[s]; !dup {
+			seenSrc[s] = struct{}{}
+			srcs = append(srcs, s)
+		}
+	}
 
-	warnings, _, err := walkTree(fsys, func(p string, d fs.DirEntry) error {
+	_, err := walkTreeFunc(fsys, func(p string, d fs.DirEntry) error {
 		for i, a := range adapters {
 			if adapter.MatchesEntry(p, d.IsDir(), sigs[i]) {
-				s := Source{Path: p, Agent: a.Agent()}
-				if _, dup := seenSrc[s]; !dup {
-					seenSrc[s] = struct{}{}
-					srcs = append(srcs, s)
-				}
+				addSource(Source{Path: p, Agent: a.Agent()})
 			}
 		}
 		for _, join := range manifestJoins {
@@ -44,9 +55,18 @@ func Discover(fsys fs.FS, adapters []adapter.Adapter) (Result, []adapter.Warning
 			break
 		}
 		return nil
+	}, func(w adapter.Warning) {
+		if errors.Is(w.Err, errBudgetSpent) {
+			for i, a := range adapters {
+				if anchoredBeneath(w.File, sigs[i]) {
+					addSource(Source{Path: w.File, Agent: a.Agent()})
+				}
+			}
+		}
+		warn(w)
 	})
 	if err != nil {
-		return Result{}, warnings, err
+		return Result{}, err
 	}
 
 	sort.Slice(srcs, func(i, j int) bool {
@@ -57,7 +77,23 @@ func Discover(fsys fs.FS, adapters []adapter.Adapter) (Result, []adapter.Warning
 	})
 	sort.Strings(roots)
 
-	return Result{Sources: srcs, PluginRoots: roots}, warnings, nil
+	return Result{Sources: srcs, PluginRoots: roots}, nil
+}
+
+func anchoredBeneath(link string, sigs []adapter.Signature) bool {
+	for _, s := range sigs {
+		if s.AnyDepth {
+			continue
+		}
+		anchor := s.Dir
+		if !s.Recursive {
+			anchor = path.Join(s.Dir, s.File)
+		}
+		if anchor == link || strings.HasPrefix(anchor, link+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // pluginManifestFile is the filename the Agent-Plugins manifest format gives a
