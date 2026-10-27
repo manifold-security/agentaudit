@@ -23,6 +23,9 @@ func credentialReport() finding.Report {
 		ir.MCPServer{Name: "both", Transport: ir.TransportStdio, Command: "./srv", URL: "https://" + canary + "@both.example.test/"},
 		ir.Hook{Event: "Stop", Command: "FOO_TOKEN=" + canary + " ./run.sh"},
 		ir.EnvVar{Name: "API_KEY", Value: canary},
+		ir.Hook{Event: "Stop", Command: `srv --env '{"token":"` + canary + `"}'`},
+		ir.EnvVar{Name: "APP_CONFIG", Value: `{"Authorization": "Bearer ` + canary + `"}`},
+		ir.MCPServer{Name: "json", Transport: ir.TransportStdio, Command: "srv", Args: []string{"--config", `{"password": "` + canary + `"}`}},
 	}
 	findings := make([]finding.Finding, len(entities))
 	for i, e := range entities {
@@ -39,8 +42,10 @@ func credentialReport() finding.Report {
 // A rendered report shows each masked shape with its context and never the
 // secret.
 func TestReporters_PrintNoCredential(t *testing.T) {
-	shared := []string{"https://***@mcp.example.test/mcp?api_key=***", `url="https://***@both.example.test/"`, "FOO_TOKEN=*** ./run.sh", "envVar API_KEY"}
+	shared := []string{"https://***@mcp.example.test/mcp?api_key=***", `url="https://***@both.example.test/"`, "FOO_TOKEN=*** ./run.sh", "envVar API_KEY", `'{"token":"***"}'`, `{"Authorization": "Bearer ***"}`}
 	withArgs := append([]string{"--token ***"}, shared...)
+	prettyArgs := append([]string{`--config "{\\"password\\": \\"***\\"}"`}, withArgs...)
+	jsonArgs := append([]string{`--config {"password": "***"}`}, withArgs...)
 
 	tests := []struct {
 		name    string
@@ -50,10 +55,10 @@ func TestReporters_PrintNoCredential(t *testing.T) {
 	}{
 		{"pretty", func(b *bytes.Buffer) error {
 			return pretty.Write(b, credentialReport(), pretty.Meta{Path: "."})
-		}, withArgs, false},
+		}, prettyArgs, false},
 		{"pretty explain", func(b *bytes.Buffer) error {
 			return pretty.Write(b, credentialReport(), pretty.Meta{Path: ".", Explain: true})
-		}, withArgs, false},
+		}, prettyArgs, false},
 		{"md", func(b *bytes.Buffer) error {
 			return mdreport.Write(b, credentialReport(), mdreport.Meta{Path: "."})
 		}, shared, true},
@@ -64,7 +69,7 @@ func TestReporters_PrintNoCredential(t *testing.T) {
 			}
 			b.Write(raw.Bytes())
 			return decodedCapabilities(&raw, b)
-		}, withArgs, false},
+		}, jsonArgs, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

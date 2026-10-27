@@ -12,7 +12,7 @@ const redactBudget = time.Second
 
 const adversarialBytes = 512 << 10
 
-var adversarialUnits = []string{"KEY=./", "key=key=", "--token ./ ", "Authorization: ", "X-Api-Key:", "curl -u a: ", "a://", "ghp_", "a://x_/"}
+var adversarialUnits = []string{"KEY=./", "key=key=", "--token ./ ", "Authorization: ", "X-Api-Key:", "curl -u a: ", "a://", "ghp_", "a://x_/", "Authorization:-", "\"key\":\"-"}
 
 func TestRedact_CompletesWithinBudget(t *testing.T) {
 	for _, unit := range adversarialUnits {

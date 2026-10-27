@@ -9,12 +9,13 @@ import (
 const mask = "***"
 
 const (
-	tokenPunct    = "._~+/=%-"
+	shellBytes    = ";&|<>()${}`\\'\""
+	wordEnds      = " \t\n"
 	prefixedPunct = "_-"
-	userinfoPunct = "._~%+=:@!*,-"
 	userNamePunct = "._~%+@-"
 	segmentBreaks = ";|&()`\n\r"
 	urlEnds       = " \t\r\n\"'`<>|(){}\\"
+	authorityEnds = urlEnds + "/?#"
 )
 
 const (
@@ -42,21 +43,21 @@ var redactions = []struct {
 	matches func(s string) iter.Seq[span]
 	spans   func(dst []span, s string, end int) []span
 }{
-	{matchesOf(urlScheme, func(s string) bool { return strings.Contains(s, "://") }), after(userinfoSpan)},
+	{matchesOf(urlScheme, func(s string) bool { return strings.Contains(s, "://") }), userinfoSpans},
 	{namedValueMatches, namedValueSpans},
-	{matchesOf(`(?i)\b(?:proxy-)?authorization:[ \t]*`, func(s string) bool { return containsFold(s, "authorization") }), authorizationSpans},
-	{matchesOf(`(?im)(?:^|[ \t])--[a-z0-9_-]*`+credentialName+`[ \t]+`, func(s string) bool { return strings.Contains(s, "--") }), after(tokenSpan)},
+	{matchesOf(`(?i)\b(?:proxy-)?authorization["']?:[ \t]*`, func(s string) bool { return containsFold(s, "authorization") }), authorizationSpans},
+	{matchesOf(`(?im)(?:^|[ \t])--[a-z0-9_-]*`+credentialName+`[ \t]+`, func(s string) bool { return strings.Contains(s, "--") }), valueSpans},
 	{standaloneMatches(tokenPrefixes, func(s string) bool { return strings.ContainsAny(s, "_-") }), after(prefixedSpan)},
 }
 
 var accessKeyIDMatches = standaloneMatches(accessKeyIDs, func(s string) bool { return strings.Contains(s, "AKIA") || strings.Contains(s, "ASIA") })
 
 // Redact returns s with each credential it recognises replaced by ***,
-// leaving the text around it visible. A masked span ends at whitespace and
-// at each shell syntax byte that TestRedact_StopsAtShellSyntax lists: the
-// scanned config's author is the party a report warns about, and a span
-// that ran past one would let a value named like a credential hide the
-// command around it.
+// leaving the text around it visible. The shell syntax bytes inside a
+// masked value, which TestRedact_KeepsShellBytesVisible lists, stay
+// visible: the scanned config's author is the party a report warns
+// about, and those bytes show where a command is chained to a value
+// named like a credential.
 func Redact(s string) string {
 	for _, r := range redactions {
 		s = maskAfter(s, r.matches(s), r.spans)
@@ -78,13 +79,13 @@ func redactArgs(command string, args []string) []string {
 		if i > 0 {
 			switch prev := args[i-1]; {
 			case credentialFlag.MatchString(prev):
-				a = maskAt(a, tokenSpan)
+				a = applySpans(a, elementSpans(nil, a))
 			case underCurl && isUserFlag(prev):
-				a = maskAt(a, userPassSpan)
+				a = applySpans(a, userPassSpans(nil, a, 0))
 			}
 		}
 		if at := attachedUserValue(a); underCurl && at > 0 {
-			a = a[:at] + maskAt(a[at:], userPassSpan)
+			a = applySpans(a, userPassSpans(nil, a, at))
 		}
 		out[i] = Redact(a)
 	}
@@ -137,12 +138,13 @@ func namedValueMatches(s string) iter.Seq[span] {
 				return
 			}
 			d += i
-			if w := credentialWordBefore(s[:d]); w > 0 {
+			q := quoteLen(s[max(d-1, 0):d])
+			if w := credentialWordBefore(s[:d-q]); w > 0 {
 				end := d + 1
 				if s[d] == ':' {
 					end += blankLen(s[end:])
 				}
-				if !yield(span{d - w, end}) {
+				if !yield(span{d - q - w, end}) {
 					return
 				}
 			}
@@ -190,8 +192,7 @@ func urlParts(s string) []urlPart {
 		}
 		end := m[1] + indexOrLen(s[m[1]:], urlEnds)
 		authority := m[1] + indexOrLen(s[m[1]:end], "/?#")
-		host := m[1] + strings.LastIndexByte(s[m[1]:authority], '@') + 1
-		parts = append(parts, urlPart{url: span{m[0], end}, host: span{host, host + indexOrLen(s[host:authority], ":")}})
+		parts = append(parts, urlPart{url: span{m[0], end}, host: span{m[1], m[1] + indexOrLen(s[m[1]:authority], ":")}})
 	}
 	return parts
 }
@@ -234,41 +235,99 @@ func after(measure func(string) (keep, n int)) func([]span, string, int) []span 
 	}
 }
 
-func namedValueSpans(dst []span, s string, end int) []span {
-	keep, n := tokenSpan(s[end:])
-	if n == 0 || s[end-1] == ':' && isPort(s[end+keep:]) {
+func valueSpans(dst []span, s string, at int) []span {
+	v := s[at+quotesLen(s[at:]):]
+	if v == "" || strings.IndexByte(wordEnds, v[0]) >= 0 || v[0] == '-' || isDotOrHomePath(v) {
 		return dst
 	}
-	return append(dst, span{end + keep, end + keep + n})
+	return wordRuns(dst, s, at, at+indexOrLen(s[at:], wordEnds))
+}
+
+func elementSpans(dst []span, a string) []span {
+	v := a[quotesLen(a):]
+	if v == "" || v[0] == '-' || isDotOrHomePath(v) {
+		return dst
+	}
+	return wordRuns(dst, a, 0, len(a))
+}
+
+func wordRuns(dst []span, s string, from, to int) []span {
+	for i := from; i < to; {
+		if isLiteral(s[i]) {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < to && !isLiteral(s[j]) {
+			j++
+		}
+		dst = append(dst, span{i, j})
+		i = j
+	}
+	return dst
+}
+
+func isLiteral(c byte) bool {
+	return strings.IndexByte(shellBytes, c) >= 0 || strings.IndexByte(wordEnds, c) >= 0
+}
+
+func applySpans(s string, spans []span) string {
+	var b strings.Builder
+	last := 0
+	for _, sp := range spans {
+		b.WriteString(s[last:sp.from])
+		b.WriteString(mask)
+		last = sp.to
+	}
+	if last == 0 {
+		return s
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+func namedValueSpans(dst []span, s string, end int) []span {
+	if s[end-1] == ':' && quoteLen(s[end-2:end-1]) == 0 && isPort(s[end:]) {
+		return dst
+	}
+	return valueSpans(dst, s, end)
 }
 
 func authorizationSpans(dst []span, s string, end int) []span {
-	keep, n := tokenSpan(s[end:])
-	if n == 0 {
-		return dst
-	}
-	first := span{end + keep, end + keep + n}
-	next := first.to + blankLen(s[first.to:])
-	var second span
-	if next > first.to {
-		keep, n = tokenSpan(s[next:])
-		second = span{next + keep, next + keep + n}
-	}
-	if isAuthScheme(s[first.from:first.to]) {
-		if second.to == second.from {
+	lead := end + quotesLen(s[end:])
+	if n := schemeWordLen(s[lead:]); n > 0 {
+		next := lead + n + blankLen(s[lead+n:])
+		if next == lead+n {
 			return dst
 		}
-		return append(dst, second)
+		return valueSpans(dst, s, next)
 	}
-	if second.to > second.from && closesHeader(s[second.to:]) {
-		return append(dst, first, second)
+	before := len(dst)
+	if dst = valueSpans(dst, s, end); len(dst) == before {
+		return dst
 	}
-	return append(dst, first)
+	firstEnd := end + indexOrLen(s[end:], wordEnds)
+	next := firstEnd + blankLen(s[firstEnd:])
+	if next == firstEnd {
+		return dst
+	}
+	secondEnd := next + indexOrLen(s[next:], wordEnds)
+	if closesHeader(s[next:secondEnd], s[secondEnd:]) {
+		dst = valueSpans(dst, s, next)
+	}
+	return dst
+}
+
+func userinfoSpans(dst []span, s string, end int) []span {
+	authority := end + indexOrLen(s[end:], authorityEnds)
+	if at := strings.LastIndexByte(s[end:authority], '@'); at > 0 {
+		dst = wordRuns(dst, s, end, end+at)
+	}
+	return dst
 }
 
 func maskCurlUsers(s string) string {
-	var b strings.Builder
-	last := 0
+	var spans []span
 	underCurl, valueNext := false, false
 	for i := 0; i < len(s); {
 		if strings.IndexByte(segmentBreaks, s[i]) >= 0 {
@@ -295,37 +354,11 @@ func maskCurlUsers(s string) string {
 			}
 		}
 		if at >= 0 {
-			if keep, n := userPassSpan(word[at:]); n > 0 {
-				from := i + at + keep
-				b.WriteString(s[last:from])
-				b.WriteString(mask)
-				last = from + n
-			}
+			spans = userPassSpans(spans, s, i+at)
 		}
 		i += len(word)
 	}
-	if last == 0 {
-		return s
-	}
-	b.WriteString(s[last:])
-	return b.String()
-}
-
-func maskAt(s string, measure func(string) (keep, n int)) string {
-	keep, n := measure(s)
-	if n == 0 {
-		return s
-	}
-	return s[:keep] + mask + s[keep+n:]
-}
-
-func tokenSpan(s string) (keep, n int) {
-	keep = quoteLen(s)
-	v := s[keep:]
-	if v == "" || v[0] == '-' || isDotOrHomePath(v) {
-		return 0, 0
-	}
-	return keep, runLen(v, tokenPunct)
+	return applySpans(s, spans)
 }
 
 // isDotOrHomePath leaves out an absolute path: a base64 secret can start
@@ -335,24 +368,20 @@ func isDotOrHomePath(v string) bool {
 		return true
 	}
 	for _, w := range []string{"..", ".", "~"} {
-		if v == w || strings.HasPrefix(v, w) && runLen(v[len(w):len(w)+1], tokenPunct) == 0 {
+		if v == w || strings.HasPrefix(v, w) && isLiteral(v[len(w)]) {
 			return true
 		}
 	}
 	return false
 }
 
-func userinfoSpan(s string) (keep, n int) {
-	return 0, max(strings.LastIndexByte(s[:runLen(s, userinfoPunct)], '@'), 0)
-}
-
-func userPassSpan(s string) (keep, n int) {
-	name := quoteLen(s)
+func userPassSpans(dst []span, s string, at int) []span {
+	name := at + quoteLen(s[at:])
 	name += runLen(s[name:], userNamePunct)
 	if name == len(s) || s[name] != ':' {
-		return 0, 0
+		return dst
 	}
-	return name + 1, runLen(s[name+1:], userinfoPunct)
+	return wordRuns(dst, s, name+1, name+1+indexOrLen(s[name+1:], wordEnds))
 }
 
 func accessKeyIDSpan(s string) (keep, n int) {
@@ -389,13 +418,13 @@ func isCurl(word string) bool {
 	return strings.EqualFold(word, "curl") || strings.EqualFold(word, "curl.exe")
 }
 
-func isAuthScheme(word string) bool {
+func schemeWordLen(v string) int {
 	for _, scheme := range []string{"bearer", "basic", "token", "digest"} {
-		if strings.EqualFold(word, scheme) {
-			return true
+		if len(v) >= len(scheme) && strings.EqualFold(v[:len(scheme)], scheme) && (len(v) == len(scheme) || isLiteral(v[len(scheme)])) {
+			return len(scheme)
 		}
 	}
-	return false
+	return 0
 }
 
 func isPort(v string) bool {
@@ -403,8 +432,8 @@ func isPort(v string) bool {
 	return digits > 0 && (digits == len(v) || !isAlnum(v[digits]))
 }
 
-func closesHeader(rest string) bool {
-	return rest == "" || strings.IndexByte("\"'\n\r", rest[0]) >= 0
+func closesHeader(word, rest string) bool {
+	return !strings.Contains(word, "://") && (strings.ContainsAny(word, `"'`) || rest == "" || rest[0] == '\n')
 }
 
 func firstWord(s string) string {
@@ -415,6 +444,14 @@ func firstWord(s string) string {
 func wordLen(s string) int {
 	n := 0
 	for n < len(s) && s[n] != ' ' && s[n] != '\t' && strings.IndexByte(segmentBreaks, s[n]) < 0 {
+		n++
+	}
+	return n
+}
+
+func quotesLen(s string) int {
+	n := 0
+	for n < len(s) && (s[n] == '"' || s[n] == '\'') {
 		n++
 	}
 	return n
