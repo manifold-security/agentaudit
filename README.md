@@ -111,6 +111,8 @@ sandbox:
 
 Findings are grouped by agent (`(claude-code)`, `(codex)`, `(cursor)`), then by category. Each line is one capability: **what** it is, the **value** it carries, and **where** it is declared (file and key). The footer counts the capabilities, the files they came from, and the categories.
 
+A finding's `id` in the JSON and Markdown reports is a hash over the scanned value, so a published report can confirm a guessed weak secret. The ids are kept stable on purpose.
+
 | Category | Meaning |
 |---|---|
 | `code-execution` | runs a command, script or server process: hooks, MCP servers, credential helpers, status lines, bundled scripts, `NODE_OPTIONS`, `PATH` |

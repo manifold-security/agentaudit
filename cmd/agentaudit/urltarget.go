@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/manifold-security/agentaudit"
+	"github.com/manifold-security/agentaudit/internal/report"
 	"github.com/manifold-security/agentaudit/remote"
 )
 
@@ -49,7 +50,7 @@ func withoutUserinfo(raw string) string {
 }
 
 func urlBlocks(raw string, recursive bool, warn func(error), opts []agentaudit.Option) ([]block, bool, error) {
-	shown := withoutUserinfo(raw)
+	shown := report.Redact(withoutUserinfo(raw))
 	u, err := remote.ParseURL(raw)
 	if err != nil {
 		return nil, false, fmt.Errorf("agentaudit: %s: %w", shown, err)

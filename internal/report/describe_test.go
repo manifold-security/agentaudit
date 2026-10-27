@@ -32,12 +32,12 @@ func TestDescribe_MCPToolHook(t *testing.T) {
 }
 
 func TestDescribe_EnvVar(t *testing.T) {
-	what, value := Describe(ir.EnvVar{Name: "API_KEY", Value: "sk-live-123"})
-	if what != "envVar API_KEY" {
-		t.Errorf("Describe() what = %q, want %q", what, "envVar API_KEY")
+	what, value := Describe(ir.EnvVar{Name: "NODE_OPTIONS", Value: "--require ./x.js"})
+	if what != "envVar NODE_OPTIONS" {
+		t.Errorf("Describe() what = %q, want %q", what, "envVar NODE_OPTIONS")
 	}
-	if value != "sk-live-123" {
-		t.Errorf("Describe() value = %q, want %q", value, "sk-live-123")
+	if value != "--require ./x.js" {
+		t.Errorf("Describe() value = %q, want %q", value, "--require ./x.js")
 	}
 }
 

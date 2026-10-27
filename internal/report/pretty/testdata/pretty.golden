@@ -21,7 +21,7 @@ network:
   mcpServer remote (http) · https://example.com/mcp · .mcp.json:mcpServers.remote
 
 secrets:
-  envVar API_KEY · sk-live-123 · .claude/settings.json:env.API_KEY
+  envVar API_KEY · *** · .claude/settings.json:env.API_KEY
   credentialHelper awsAuthRefresh · aws-refresh.sh · .claude/settings.json:credentialHelper
 
 permissions:

@@ -18,6 +18,11 @@ var autoStartEvents = map[string]bool{
 // Describe annotates what (an auto-start hook, a referenced payload, and so
 // on) with facts about the capability, never a severity or risk level.
 func Describe(e ir.Entity) (what, value string) {
+	what, value = describe(e)
+	return Redact(what), Redact(value)
+}
+
+func describe(e ir.Entity) (what, value string) {
 	switch v := e.(type) {
 	case ir.Hook:
 		if v.MCPTool != "" {
@@ -41,6 +46,9 @@ func Describe(e ir.Entity) (what, value string) {
 		what = fmt.Sprintf("mcpServer %s (%s)", v.Name, label)
 		return what, mcpEndpoints(v)
 	case ir.EnvVar:
+		if v.Value != "" && credentialVar.MatchString(v.Name) {
+			return "envVar " + v.Name, mask
+		}
 		return "envVar " + v.Name, v.Value
 	case ir.Subagent:
 		what = fmt.Sprintf("subagent %s (%s)", v.Name, v.PermissionMode)
@@ -93,15 +101,15 @@ func Describe(e ir.Entity) (what, value string) {
 	}
 }
 
-// Args returns the argument vector an entity declared, for a reporter whose
-// format delimits each element structurally. Describe's what and value
-// exclude it; CommandLine spells it for a single text column.
+// Args returns the argument vector an entity declared, redacted, for a
+// reporter whose format delimits each element structurally. Describe's what
+// and value exclude it; CommandLine spells it for a single text column.
 func Args(e ir.Entity) []string {
 	switch v := e.(type) {
 	case ir.MCPServer:
-		return v.Args
+		return redactArgs(v.Command, v.Args)
 	case ir.LSPServer:
-		return v.Args
+		return redactArgs(v.Command, v.Args)
 	default:
 		return nil
 	}
@@ -127,8 +135,8 @@ func CommandLine(e ir.Entity) (string, bool) {
 		return "", false
 	}
 	spelled := make([]string, 0, len(args)+1)
-	spelled = append(spelled, quoteArg(command))
-	for _, a := range args {
+	spelled = append(spelled, quoteArg(Redact(command)))
+	for _, a := range redactArgs(command, args) {
 		spelled = append(spelled, quoteArg(a))
 	}
 	return strings.Join(spelled, " "), true

@@ -92,6 +92,8 @@ var refusedURLs = []struct {
 	{"https://user@github.com/o/r", "want the host github.com", "https://***@github.com/o/r"},
 	{"https://user@github.com", "want the host github.com", "https://***@github.com"},
 	{"https://user:p@ss@github.com/o/r", "want the host github.com", "https://***@github.com/o/r"},
+	{"https://github.com/o/r?access_token=abc", "query, fragment or escape in the path", "https://github.com/o/r?access_token=***"},
+	{"https://x:tok@github.com/o/r?token=abc", "want the host github.com", "https://***@github.com/o/r?token=***"},
 	{"https://github.com/o/r/blob/a@b", "want nothing after the repository but /tree/<ref>", ""},
 }
 
@@ -147,8 +149,8 @@ func TestRun_RoutesAURLToFetchAndAPathToOpenTarget(t *testing.T) {
 }
 
 // An argument outside the URL grammar exits 2 with remote.ParseURL's reason,
-// echoing the URL with *** in place of its userinfo, before any fetch; the
-// grammar's own form is the arm that fetches.
+// echoing the URL with its userinfo and credential query values masked,
+// before any fetch; the grammar's own form is the arm that fetches.
 func TestRun_RefusesAURLOutsideTheGrammarBeforeFetching(t *testing.T) {
 	for _, tc := range refusedURLs {
 		t.Run(tc.arg, func(t *testing.T) {

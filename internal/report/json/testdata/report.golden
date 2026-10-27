@@ -111,7 +111,7 @@
         "capability": {
           "kind": "envVar",
           "what": "envVar API_KEY",
-          "value": "sk-live-123",
+          "value": "***",
           "file": ".claude/settings.json",
           "key": "env.API_KEY"
         }

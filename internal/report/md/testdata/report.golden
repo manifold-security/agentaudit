@@ -37,7 +37,7 @@
 
 | Rule | Capability | Value | Location | Message | References | ID |
 | --- | --- | --- | --- | --- | --- | --- |
-| env.secret | envVar API&#95;KEY | sk-live-123 | .claude/settings.json:env.API&#95;KEY |  |  | `2082dc0ff6a682c42467969200f4b286` |
+| env.secret | envVar API&#95;KEY | &#42;&#42;&#42; | .claude/settings.json:env.API&#95;KEY |  |  | `2082dc0ff6a682c42467969200f4b286` |
 | credentialhelper.aws | credentialHelper awsAuthRefresh | aws-refresh.sh | .claude/settings.json:credentialHelper |  |  | `2ec06d162fbcae1bdd691ab3e4debca7` |
 
 ## permissions
