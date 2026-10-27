@@ -26,6 +26,8 @@ func credentialReport() finding.Report {
 		ir.Hook{Event: "Stop", Command: `srv --env '{"token":"` + canary + `"}'`},
 		ir.EnvVar{Name: "APP_CONFIG", Value: `{"Authorization": "Bearer ` + canary + `"}`},
 		ir.MCPServer{Name: "json", Transport: ir.TransportStdio, Command: "srv", Args: []string{"--config", `{"password": "` + canary + `"}`}},
+		ir.Hook{Event: "Stop", Command: `srv --password "correct ` + canary + ` battery" --verbose`},
+		ir.MCPServer{Name: "spaced", Transport: ir.TransportStdio, Command: "srv", Args: []string{"--config", `{"token": "two ` + canary + `"}`}},
 	}
 	findings := make([]finding.Finding, len(entities))
 	for i, e := range entities {
@@ -42,10 +44,10 @@ func credentialReport() finding.Report {
 // A rendered report shows each masked shape with its context and never the
 // secret.
 func TestReporters_PrintNoCredential(t *testing.T) {
-	shared := []string{"https://***@mcp.example.test/mcp?api_key=***", `url="https://***@both.example.test/"`, "FOO_TOKEN=*** ./run.sh", "envVar API_KEY", `'{"token":"***"}'`, `{"Authorization": "Bearer ***"}`}
+	shared := []string{"https://***@mcp.example.test/mcp?api_key=***", `url="https://***@both.example.test/"`, "FOO_TOKEN=*** ./run.sh", "envVar API_KEY", `'{"token":"***"}'`, `{"Authorization": "Bearer ***"}`, `srv --password "***" --verbose`}
 	withArgs := append([]string{"--token ***"}, shared...)
-	prettyArgs := append([]string{`--config "{\\"password\\": \\"***\\"}"`}, withArgs...)
-	jsonArgs := append([]string{`--config {"password": "***"}`}, withArgs...)
+	prettyArgs := append([]string{`--config "{\\"password\\": \\"***\\"}"`, `--config "{\\"token\\": \\"***\\"}"`}, withArgs...)
+	jsonArgs := append([]string{`--config {"password": "***"}`, `--config {"token": "***"}`}, withArgs...)
 
 	tests := []struct {
 		name    string
