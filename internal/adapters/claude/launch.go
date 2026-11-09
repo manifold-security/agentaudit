@@ -64,9 +64,7 @@ func previewServerEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 	}
 
 	var raw []json.RawMessage
-	if err := json.Unmarshal(doc.Configurations, &raw); err != nil {
-		return nil, []adapter.Warning{{File: launchFileName, Err: fmt.Errorf("%s: %w", configurationsKey, err)}}
-	}
+	_ = json.Unmarshal(doc.Configurations, &raw)
 
 	var entities []ir.Entity
 	var warnings []adapter.Warning
