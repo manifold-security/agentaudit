@@ -23,4 +23,5 @@ const (
 	KindToolPermission   = "toolPermission"
 	KindInstructionText  = "instructionText"
 	KindLSPServer        = "lspServer"
+	KindPreviewServer    = "previewServer"
 )

@@ -1022,6 +1022,41 @@ func TestWrite_FindingLine_LSPServerArgsFollowTheCommand(t *testing.T) {
 	}
 }
 
+func TestWrite_FindingLine_PreviewServerShowsItsSettingsAndCommandLine(t *testing.T) {
+	got := renderFinding(t, finding.Finding{
+		RuleID:     "preview.command",
+		Categories: []finding.Category{"code-execution"},
+		Capability: finding.Capability{
+			Entity: ir.PreviewServer{
+				Name: "web", Command: "npm", Args: []string{"run", "dev"},
+				Cwd: "apps/web", Env: map[string]string{"NODE_ENV": "development"},
+			},
+			Provenance: finding.Provenance{File: ".claude/launch.json", Key: "configurations[0]"},
+		},
+	})
+
+	want := `  previewServer web (cwd="apps/web"; env.NODE_ENV="development") · npm run dev · .claude/launch.json:configurations[0]`
+	if line := soleFindingLine(t, got); line != want {
+		t.Fatalf("finding line =\n%q\nwant\n%q", line, want)
+	}
+}
+
+func TestWrite_FindingLine_PreviewServerWithNoCommandShowsItsArguments(t *testing.T) {
+	got := renderFinding(t, finding.Finding{
+		RuleID:     "preview.command",
+		Categories: []finding.Category{"code-execution"},
+		Capability: finding.Capability{
+			Entity:     ir.PreviewServer{Name: "web", Args: []string{"--inspect", "x y"}},
+			Provenance: finding.Provenance{File: ".claude/launch.json", Key: "configurations[0]"},
+		},
+	})
+
+	want := `  previewServer web · args=["--inspect" "x y"] · .claude/launch.json:configurations[0]`
+	if line := soleFindingLine(t, got); line != want {
+		t.Fatalf("finding line =\n%q\nwant\n%q", line, want)
+	}
+}
+
 // Distinct command lines must render distinct lines, including pairs that
 // differ only in where an element boundary falls or in how a byte is spelled.
 func TestWrite_FindingLine_DistinctCommandLinesRenderDistinctLines(t *testing.T) {

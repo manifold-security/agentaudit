@@ -23,4 +23,5 @@ var (
 	_ Entity = ToolPermission{}
 	_ Entity = InstructionText{}
 	_ Entity = LSPServer{}
+	_ Entity = PreviewServer{}
 )

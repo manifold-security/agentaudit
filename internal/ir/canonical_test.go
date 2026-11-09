@@ -104,6 +104,12 @@ func canonicalEntities() []Entity {
 			Args:     []string{"serve"},
 			Location: Location{File: ".lsp.json", Key: "go"},
 		},
+		PreviewServer{
+			Name:     "web",
+			Command:  "npm",
+			Args:     []string{"run", "dev"},
+			Location: Location{File: ".claude/launch.json", Key: "configurations[0]"},
+		},
 	}
 }
 
@@ -237,6 +243,35 @@ func TestLSPServerIdentity(t *testing.T) {
 	c := LSPServer{Name: "go", Command: "other-gopls"}
 	if a.Identity() == c.Identity() {
 		t.Fatalf("Identity() collided across different Command values: %q", a.Identity())
+	}
+}
+
+// Two values sharing Name and Command are the same preview server whatever
+// else differs, so editing a cwd or env never remints a finding id.
+func TestPreviewServerIdentity(t *testing.T) {
+	a := PreviewServer{Name: "web", Command: "npm"}
+	b := PreviewServer{
+		Name:        "web",
+		Command:     "npm",
+		Args:        []string{"run", "dev"},
+		Program:     "server.js",
+		ProgramArgs: []string{"--port", "4000"},
+		Cwd:         "apps/web",
+		Env:         map[string]string{"NODE_ENV": "development"},
+		URL:         "http://localhost:3000",
+		Location:    Location{File: "other.json", Key: "configurations[4]"},
+	}
+	if a.Identity() != b.Identity() {
+		t.Fatalf("Identity() differs for equal Name+Command: %q vs %q", a.Identity(), b.Identity())
+	}
+
+	for _, other := range []PreviewServer{
+		{Name: "web", Command: "pnpm"},
+		{Name: "api", Command: "npm"},
+	} {
+		if a.Identity() == other.Identity() {
+			t.Errorf("Identity() collided with %+v: %q", other, a.Identity())
+		}
 	}
 }
 

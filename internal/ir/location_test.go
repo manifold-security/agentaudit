@@ -46,6 +46,8 @@ func wantLocation(t *testing.T, e Entity) Location {
 		return v.Location
 	case LSPServer:
 		return v.Location
+	case PreviewServer:
+		return v.Location
 	default:
 		t.Fatalf("wantLocation: unhandled entity type %T", e)
 		return Location{}
@@ -77,6 +79,7 @@ func TestLocationOfAllKinds(t *testing.T) {
 		KindNetworkPolicy:    false,
 		KindToolPermission:   false,
 		KindInstructionText:  false,
+		KindPreviewServer:    false,
 	}
 
 	for _, e := range entities {

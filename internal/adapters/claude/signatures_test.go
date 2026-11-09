@@ -23,6 +23,7 @@ func TestSignatures(t *testing.T) {
 		{Dir: ".claude/skills", Recursive: true},
 		{Dir: ".claude/commands", Recursive: true},
 		{Dir: ".claude-plugin", File: "plugin.json", AnyDepth: true},
+		{Dir: ".claude", File: "launch.json", Recursive: false},
 	}
 
 	got := New().Signatures()
@@ -49,6 +50,24 @@ func TestSignatures_AgentsMatchesNestedPath(t *testing.T) {
 		{".claude/agents/team/reviewer.md", true},
 		{".claude/agents-evil/reviewer.md", false},
 		{".claude/notes.md", false},
+	}
+	for _, tt := range cases {
+		if got := adapter.Matches(tt.path, sigs); got != tt.want {
+			t.Errorf("Matches(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+func TestSignatures_LaunchJSONMatchesOnlyAtTheRoot(t *testing.T) {
+	sigs := New().Signatures()
+
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{".claude/launch.json", true},
+		{"app/.claude/launch.json", false},
+		{".claude/launch.json.bak", false},
 	}
 	for _, tt := range cases {
 		if got := adapter.Matches(tt.path, sigs); got != tt.want {

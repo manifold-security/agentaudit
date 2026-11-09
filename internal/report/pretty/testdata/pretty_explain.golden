@@ -22,6 +22,8 @@ code-execution:
     lspserver.command
   provisioner setup-worktree-unix · npm ci · .cursor/worktrees.json:setup-worktree-unix[0]
     provisioner.worktree
+  previewServer web (cwd="apps/web"; env.NODE_ENV="development") · npm run dev · .claude/launch.json:configurations[0]
+    previewserver.command
 
 supply-chain:
   mcpServer fs (stdio) · "npx mcp-fs" -y mcp-fs@1.2.3 · .mcp.json:mcpServers.fs
@@ -73,4 +75,4 @@ network-access:
   networkPolicy default · true · .codex/config.toml:sandbox_workspace_write.network_access
     networkpolicy.default
 
-26 capabilities · 14 files · 10 categories
+27 capabilities · 15 files · 10 categories

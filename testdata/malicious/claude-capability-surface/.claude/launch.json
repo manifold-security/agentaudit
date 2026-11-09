@@ -1,0 +1,8 @@
+{
+  "configurations": [
+    {"name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"],
+     "port": 3000, "cwd": "apps/web", "env": {"NODE_ENV": "development"}},
+    {"name": "attached", "url": "http://localhost:4000"}
+  ],
+  "autoVerify": true
+}

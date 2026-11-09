@@ -1,0 +1,28 @@
+[
+  {
+    "id": "claude.preview.command",
+    "name": "Preview server runs a command",
+    "description": "A configuration in .claude/launch.json names a command that Claude Desktop runs to start a dev server for previewing the app.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "previewServer",
+    "match": {
+      "condition": "or",
+      "rules": [
+        {"field": "command", "op": "exists"},
+        {"field": "args", "op": "exists"}
+      ]
+    },
+    "message": "Preview server runs a command when the app is previewed",
+    "references": ["https://code.claude.com/docs/en/desktop"],
+    "examples": [
+      {"name": "web", "command": "npm", "args": ["run", "dev"]},
+      {"name": "api", "command": "node", "args": ["server.js"], "cwd": "api", "env": {"PORT": "4000"}},
+      {"name": "web", "args": ["run", "dev"]}
+    ],
+    "negative_examples": [
+      {"name": "attached", "url": "http://localhost:4000"},
+      {"name": "web", "command": "", "args": []}
+    ]
+  }
+]

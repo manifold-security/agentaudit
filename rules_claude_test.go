@@ -40,6 +40,7 @@ func TestEmbeddedClaudeRulesLoad(t *testing.T) {
 		"claude.plugin.installed":                    true,
 		"claude.plugin.executable":                   true,
 		"claude.plugin.lsp-server":                   true,
+		"claude.preview.command":                     true,
 	}
 	if len(rules) != len(wantIDs) {
 		t.Fatalf("claude rules len = %d, want %d", len(rules), len(wantIDs))
@@ -244,6 +245,36 @@ func TestClaudePermissionModeRuleSkipsBypassPermissions(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, m.want) {
 				t.Fatalf("mode %+v fired %v, want %v", m.entity, got, m.want)
+			}
+		})
+	}
+}
+
+// A preview server runs what its entry names, so an entry that names no
+// command and no arguments, such as one that only attaches to a url, is not a
+// capability.
+func TestClaudePreviewRuleSkipsAnAttachOnlyEntry(t *testing.T) {
+	rules := claudeRules(t)
+
+	entries := []struct {
+		name   string
+		entity ir.PreviewServer
+		want   []string
+	}{
+		{"attach only", ir.PreviewServer{Name: "attached", URL: "http://localhost:4000"}, nil},
+		{"a command beside a url", ir.PreviewServer{Name: "web", Command: "npm", URL: "http://localhost:3000"}, []string{"claude.preview.command"}},
+		{"arguments with no command", ir.PreviewServer{Name: "web", Args: []string{"run", "dev"}}, []string{"claude.preview.command"}},
+		{"an empty command and no arguments", ir.PreviewServer{Name: "web", Command: "", Args: []string{}}, nil},
+	}
+
+	for _, e := range entries {
+		t.Run(e.name, func(t *testing.T) {
+			var got []string
+			for _, hit := range ruleeng.Evaluate(rules, []ir.Entity{e.entity}, "claude-code") {
+				got = append(got, hit.RuleID)
+			}
+			if !reflect.DeepEqual(got, e.want) {
+				t.Fatalf("entry %+v fired %v, want %v", e.entity, got, e.want)
 			}
 		})
 	}

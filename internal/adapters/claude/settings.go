@@ -100,6 +100,10 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 		warnings = append(warnings, refused...)
 	}
 
+	previews, previewWarnings := previewServerEntities(fsys)
+	entities = append(entities, previews...)
+	warnings = append(warnings, previewWarnings...)
+
 	mcp, mcpWarnings, err := mcpEntities(fsys)
 	if err != nil {
 		return nil, nil, err
