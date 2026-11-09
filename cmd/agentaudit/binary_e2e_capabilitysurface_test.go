@@ -32,6 +32,7 @@ func TestBinaryE2E_CapabilitySurfaceReportsEveryCategory(t *testing.T) {
 		"sandbox · /var/run/docker.sock",
 		"permissionMode · acceptEdits",
 		`previewServer web (cwd="apps/web"; env.NODE_ENV="development") · npm run dev`,
+		"permission Bash · npm run test:*",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("binary stdout missing %q\nfull stdout:\n%s", want, stdout)
@@ -39,6 +40,9 @@ func TestBinaryE2E_CapabilitySurfaceReportsEveryCategory(t *testing.T) {
 	}
 	if strings.Contains(stdout, "previewServer attached") {
 		t.Errorf("binary stdout reports the url-only preview entry, which runs nothing\nfull stdout:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "permission WebFetch") {
+		t.Errorf("binary stdout reports a WebFetch allow entry, want only the shell one\nfull stdout:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "SCAN INCOMPLETE") {
 		t.Errorf("binary stdout contains SCAN INCOMPLETE, want a complete scan\nfull stdout:\n%s", stdout)

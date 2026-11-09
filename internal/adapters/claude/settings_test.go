@@ -297,8 +297,10 @@ func TestParse_DefaultModeAbsent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse() error = %v, want nil", err)
 			}
-			if len(entities) != 0 {
-				t.Fatalf("Parse() entities = %+v, want empty (no permissions.defaultMode present)", entities)
+			for _, e := range entities {
+				if mode, ok := e.(ir.PermissionMode); ok {
+					t.Fatalf("Parse() entities hold %+v, want no PermissionMode (no permissions.defaultMode present)", mode)
+				}
 			}
 		})
 	}

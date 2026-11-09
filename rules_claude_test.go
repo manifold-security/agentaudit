@@ -41,6 +41,7 @@ func TestEmbeddedClaudeRulesLoad(t *testing.T) {
 		"claude.plugin.executable":                   true,
 		"claude.plugin.lsp-server":                   true,
 		"claude.preview.command":                     true,
+		"claude.permissions.allowed-shell":           true,
 	}
 	if len(rules) != len(wantIDs) {
 		t.Fatalf("claude rules len = %d, want %d", len(rules), len(wantIDs))
@@ -275,6 +276,44 @@ func TestClaudePreviewRuleSkipsAnAttachOnlyEntry(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, e.want) {
 				t.Fatalf("entry %+v fired %v, want %v", e.entity, got, e.want)
+			}
+		})
+	}
+}
+
+// Only an exact Bash or PowerShell tool fires the allow rule, whatever its
+// argument; a tool of another name, another case or a malformed spelling does
+// not.
+func TestClaudeAllowRuleFlagsOnlyShellEntries(t *testing.T) {
+	rules := claudeRules(t)
+
+	tests := []struct {
+		name string
+		perm ir.ToolPermission
+		want []string
+	}{
+		{"bare Bash", ir.ToolPermission{Tool: "Bash"}, []string{"claude.permissions.allowed-shell"}},
+		{"Bash prefix", ir.ToolPermission{Tool: "Bash", Argument: "npm run test:*"}, []string{"claude.permissions.allowed-shell"}},
+		{"Bash exact", ir.ToolPermission{Tool: "Bash", Argument: "git status"}, []string{"claude.permissions.allowed-shell"}},
+		{"bare PowerShell", ir.ToolPermission{Tool: "PowerShell"}, []string{"claude.permissions.allowed-shell"}},
+		{"PowerShell command", ir.ToolPermission{Tool: "PowerShell", Argument: "Get-ChildItem *"}, []string{"claude.permissions.allowed-shell"}},
+		{"WebFetch", ir.ToolPermission{Tool: "WebFetch", Argument: "domain:example.com"}, nil},
+		{"Read", ir.ToolPermission{Tool: "Read", Argument: "./.env"}, nil},
+		{"MCP tool", ir.ToolPermission{Tool: "mcp__github__create_issue"}, nil},
+		{"unclosed Bash", ir.ToolPermission{Tool: "Bash(rm"}, nil},
+		{"unclosed PowerShell", ir.ToolPermission{Tool: "PowerShell(ls"}, nil},
+		{"lowercase bash", ir.ToolPermission{Tool: "bash", Argument: "ls"}, nil},
+		{"lowercase powershell", ir.ToolPermission{Tool: "powershell", Argument: "ls"}, nil},
+		{"leading space", ir.ToolPermission{Tool: " Bash", Argument: "ls"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, hit := range ruleeng.Evaluate(rules, []ir.Entity{tt.perm}, "claude-code") {
+				got = append(got, hit.RuleID)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("rules fired = %v, want %v", got, tt.want)
 			}
 		})
 	}

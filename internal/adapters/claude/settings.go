@@ -38,7 +38,8 @@ type settings struct {
 }
 
 type permissions struct {
-	DefaultMode *string `json:"defaultMode"`
+	DefaultMode *string         `json:"defaultMode"`
+	Allow       json.RawMessage `json:"allow"`
 }
 
 // hookGroup is one matcher block within hooks.<Event>. It carries json and
@@ -95,7 +96,8 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 			continue
 		}
 
-		found, refused := limits.Of(fsys).Admit(file, entitiesFromSettings(s, file), nil)
+		parsed, malformed := entitiesFromSettings(s, file)
+		found, refused := limits.Of(fsys).Admit(file, parsed, malformed)
 		entities = append(entities, found...)
 		warnings = append(warnings, refused...)
 	}
@@ -146,7 +148,7 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	return entities, warnings, nil
 }
 
-func entitiesFromSettings(s settings, file string) []ir.Entity {
+func entitiesFromSettings(s settings, file string) ([]ir.Entity, []adapter.Warning) {
 	var entities []ir.Entity
 
 	entities = append(entities, hookEntities(s.Hooks, file)...)
@@ -174,9 +176,11 @@ func entitiesFromSettings(s settings, file string) []ir.Entity {
 		})
 	}
 
+	allowed, malformed := allowEntities(s.Permissions, file)
+	entities = append(entities, allowed...)
 	entities = append(entities, mcpApprovalEntities(s, file)...)
 
-	return entities
+	return entities, malformed
 }
 
 // mcpApprovalEntities emits ir.MCPApproval for the top-level MCP

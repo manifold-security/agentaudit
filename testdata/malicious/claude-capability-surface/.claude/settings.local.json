@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["Bash(npm run test:*)", "WebFetch(domain:example.com)"],
+    "deny": ["Bash(curl:*)"]
+  }
+}

@@ -115,7 +115,7 @@ A finding's `id` in the JSON and Markdown reports is a hash over the scanned val
 
 | Category | Meaning |
 |---|---|
-| `code-execution` | runs a command, script or server process: hooks, MCP servers, credential helpers, status lines, bundled scripts, Claude Desktop preview servers, `NODE_OPTIONS`, `PATH` |
+| `code-execution` | runs a command, script or server process: hooks, MCP servers, credential helpers, status lines, bundled scripts, Claude Desktop preview servers, the Bash and PowerShell commands a settings file pre-approves, `NODE_OPTIONS`, `PATH` |
 | `credential-access` | passes a value from your environment to a server or command |
 | `network-access` | reaches the network or redirects where traffic goes: API base URLs, proxies |
 | `permissions` | widens what runs without asking you: approval modes, auto-approved MCP servers |

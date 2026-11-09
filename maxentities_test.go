@@ -372,6 +372,7 @@ func TestWithMaxEntitiesRefusesEachSurfaceAtItsFile(t *testing.T) {
 	}{
 		{"claude settings", projectScan, map[string]string{settingsFile: string(hooksSettings(2))}, 1, claude, settingsFile},
 		{"claude launch.json", projectScan, map[string]string{".claude/launch.json": `{"configurations":[{"runtimeExecutable":"a"},{"runtimeExecutable":"b"}]}`}, 1, claude, ".claude/launch.json"},
+		{"claude settings allow", projectScan, map[string]string{settingsFile: `{"permissions":{"allow":["Bash(a)","Bash(b)"]}}`}, 1, claude, settingsFile},
 		{"claude .mcp.json while decoding", projectScan, map[string]string{".mcp.json": `{"mcpServers":` + threeServers + `}`}, 1, claude, ".mcp.json"},
 		{"claude .mcp.json after decoding", projectScan, map[string]string{".mcp.json": `{"mcpServers":` + helperServer + `}`}, 1, claude, ".mcp.json"},
 		{"claude .claude.json while decoding", globalScan, map[string]string{".claude.json": `{"mcpServers":` + threeServers + `}`}, 1, claude, ".claude.json"},
@@ -462,6 +463,7 @@ func TestWithMaxEntitiesChargesEachMalformedItem(t *testing.T) {
 		warnings int
 	}{
 		{"claude launch.json", projectScan, map[string]string{".claude/launch.json": `{"configurations":[0,0]}`}, 1, claude, ".claude/launch.json", 1},
+		{"claude settings allow", projectScan, map[string]string{settingsFile: `{"permissions":{"allow":[0,0]}}`}, 1, claude, settingsFile, 1},
 		{"claude .mcp.json", projectScan, map[string]string{".mcp.json": `{"mcpServers":` + helperFault + `}`}, 1, claude, ".mcp.json", 1},
 		{"claude .mcp.json spends the budget", projectScan, map[string]string{".mcp.json": `{"mcpServers":{"a":0}}`, ".claude/agents/a.md": named}, 1, claude, ".claude/agents/a.md", 2},
 		{"claude .claude.json", globalScan, map[string]string{".claude.json": `{"projects":` + twoFaults + `}`}, 1, claude, ".claude.json", 1},

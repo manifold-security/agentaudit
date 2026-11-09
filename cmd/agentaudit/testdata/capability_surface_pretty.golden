@@ -14,6 +14,7 @@ code-execution:
   mcpServer toolkit-remote (http) · https://mcp.example.test/mcp · plugins/toolkit/.mcp.json:mcpServers.toolkit-remote
   mcpServer toolkit-remote (http) headers helper for url="https://mcp.example.test/mcp" · plugins/toolkit/scripts/headers.sh · plugins/toolkit/.mcp.json:mcpServers.toolkit-remote.headersHelper
   envVar NODE_OPTIONS · --require /tmp/inject.js · .claude/settings.json:env.NODE_OPTIONS
+  permission Bash · npm run test:* · .claude/settings.local.json:permissions.allow[0]
   pluginExecutable sync.sh [toolkit-plugin] · plugins/toolkit/bin/sync.sh · plugins/toolkit/bin/sync.sh
   plugin toolkit-plugin · 0.1.0 · plugins/toolkit/.claude-plugin/plugin.json:name
   previewServer web (cwd="apps/web"; env.NODE_ENV="development") · npm run dev · .claude/launch.json:configurations[0]
@@ -33,4 +34,4 @@ sandbox:
   sandbox · /var/run/docker.sock · .claude/settings.json:sandbox.network.allowUnixSockets[0]
   sandbox · /tmp/app.sock · .claude/settings.json:sandbox.network.allowUnixSockets[1]
 
-24 capabilities · 10 files · 4 categories
+25 capabilities · 11 files · 4 categories
