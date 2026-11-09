@@ -10,6 +10,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
@@ -51,7 +52,7 @@ func lspEntriesFromRaw(raw json.RawMessage, file string) (map[string]lspServerEn
 			continue
 		}
 		var entry lspServerEntry
-		if err := json.Unmarshal(rawEntries[name], &entry); err != nil {
+		if err := jsonconf.Unmarshal(rawEntries[name], &entry); err != nil {
 			warnings = append(warnings, adapter.Warning{File: file, Err: fmt.Errorf("%s.%s: %w", lspServersKey, name, err)})
 			continue
 		}

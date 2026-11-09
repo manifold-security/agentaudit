@@ -9,6 +9,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
@@ -50,7 +51,7 @@ func previewServerEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 	}
 
 	var doc launchDoc
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := jsonconf.Unmarshal(data, &doc); err != nil {
 		return nil, []adapter.Warning{{File: launchFileName, Err: err}}
 	}
 
@@ -76,7 +77,7 @@ func previewServerEntities(fsys fs.FS) ([]ir.Entity, []adapter.Warning) {
 			continue
 		}
 		var c launchConfiguration
-		if err := json.Unmarshal(item, &c); err != nil {
+		if err := jsonconf.Unmarshal(item, &c); err != nil {
 			warnings = append(warnings, adapter.Warning{File: launchFileName, Err: fmt.Errorf("%s: %w", key, err)})
 			continue
 		}

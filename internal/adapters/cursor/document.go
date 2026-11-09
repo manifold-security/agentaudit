@@ -8,6 +8,7 @@ import (
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
 
@@ -76,7 +77,7 @@ func jsoncDecodeFault(data []byte, err error) error {
 // wrong-typed field sits at. The decoder's own message names the Go struct
 // it tried to fill, which means nothing to whoever wrote the JSON.
 func decodeEntry(key string, raw json.RawMessage, target any) error {
-	err := json.Unmarshal(raw, target)
+	err := jsonconf.Unmarshal(raw, target)
 	if err == nil {
 		return nil
 	}
