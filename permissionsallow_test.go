@@ -121,3 +121,22 @@ func TestScanGlobalReportsTheUsersOwnAllowEntries(t *testing.T) {
 		t.Errorf("%s findings = %q, want %q", allowedShellRule, got, want)
 	}
 }
+
+func TestScanReportsABashStarAllowEntryAsTheBareTool(t *testing.T) {
+	entities := func(allow string) []finding.Entity {
+		rep, _ := warnedScan(t, projectScan, treeOf(map[string]string{settingsFile: `{"permissions":{"allow":["` + allow + `"]}}`}))
+		var out []finding.Entity
+		for _, f := range rep.Findings() {
+			if f.RuleID == allowedShellRule {
+				out = append(out, f.Capability.Entity)
+			}
+		}
+		return out
+	}
+
+	star, bare := entities("Bash(*)"), entities("Bash")
+
+	if len(bare) != 1 || !slices.Equal(star, bare) {
+		t.Errorf("Bash(*) entities = %+v, bare Bash entities = %+v, want one equal entity", star, bare)
+	}
+}

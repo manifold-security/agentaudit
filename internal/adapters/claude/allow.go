@@ -40,6 +40,9 @@ func allowEntities(p *permissions, file string) ([]ir.Entity, []adapter.Warning)
 		}
 
 		tool, argument := splitPermissionRule(item.rule)
+		if argument == "*" {
+			argument = ""
+		}
 		entities = append(entities, ir.ToolPermission{
 			Tool:     tool,
 			Argument: argument,

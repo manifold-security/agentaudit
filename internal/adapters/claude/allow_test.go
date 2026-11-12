@@ -60,6 +60,20 @@ func TestParse_AllowYieldsAToolPermissionPerEntry(t *testing.T) {
 	}
 }
 
+func TestParse_AllowEntryWithAStarArgumentIsTheBareTool(t *testing.T) {
+	fsys := mapFS("settings.json", `{"permissions": {"allow": ["Bash(*)", "PowerShell(*)"]}}`)
+
+	entities, err := parseEntities(fsys)
+	if err != nil {
+		t.Fatalf("Parse() error = %v, want nil", err)
+	}
+
+	want := []ir.Entity{allowPermission(0, "Bash", ""), allowPermission(1, "PowerShell", "")}
+	if !reflect.DeepEqual(entities, want) {
+		t.Fatalf("entities = %+v, want %+v", entities, want)
+	}
+}
+
 func warningTexts(warnings []adapter.Warning) []string {
 	var texts []string
 	for _, w := range warnings {
