@@ -193,6 +193,8 @@ func TestParse_AllowEntryADenyOrAskEntryCoversIsWithheld(t *testing.T) {
 		{"ask of the bare tool", `["Bash(touch ./m)"]`, ``, `["Bash"]`, nil},
 		{"deny identical to the entry", `["Bash(touch ./m)"]`, `["Bash(touch ./m)"]`, ``, nil},
 		{"ask identical to the entry", `["Bash(touch ./m)"]`, ``, `["Bash(touch ./m)"]`, nil},
+		{"deny of the space-star spelling of the entry's prefix", `["Bash(curl:*)"]`, `["Bash(curl *)"]`, ``, nil},
+		{"ask of the colon-star spelling of the entry's prefix", `["Bash(curl *)"]`, ``, `["Bash(curl:*)"]`, nil},
 		{"PowerShell entry beside a bare deny", `["PowerShell(Get-ChildItem *)"]`, `["PowerShell"]`, ``, nil},
 		{"PowerShell entry beside a deny of the tool with a star", `["PowerShell(Get-ChildItem *)"]`, `["PowerShell(*)"]`, ``, nil},
 		{"only the entry that an identical deny names", `["Bash(a)", "Bash(b)"]`, `["Bash(a)"]`, ``, []ir.Entity{allowPermission(1, "Bash", "b")}},
@@ -224,7 +226,8 @@ func TestParse_AllowEntryStaysBesideADenyOrAskEntryThatDoesNotMatchIt(t *testing
 		ask   string
 		want  []ir.Entity
 	}{
-		{"deny of a different spelling of the prefix", `["Bash(curl:*)"]`, `["Bash(curl *)"]`, ``, []ir.Entity{allowPermission(0, "Bash", "curl:*")}},
+		{"deny of the space-star spelling before more text", `["Bash(curl:* -s)"]`, `["Bash(curl * -s)"]`, ``, []ir.Entity{allowPermission(0, "Bash", "curl:* -s")}},
+		{"deny of a longer prefix", `["Bash(curl:*)"]`, `["Bash(curl https:*)"]`, ``, []ir.Entity{allowPermission(0, "Bash", "curl:*")}},
 		{"ask of a narrower entry", `["Bash"]`, ``, `["Bash(rm:*)"]`, []ir.Entity{allowPermission(0, "Bash", "")}},
 		{"deny of another shell tool", `["Bash(make)"]`, `["PowerShell"]`, ``, []ir.Entity{allowPermission(0, "Bash", "make")}},
 	}

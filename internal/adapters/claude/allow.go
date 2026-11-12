@@ -30,7 +30,7 @@ func allowEntities(p *permissions, file string) ([]ir.Entity, []adapter.Warning)
 
 	denyAsk := map[string]bool{}
 	for _, item := range append(denied, asked...) {
-		denyAsk[item.rule] = true
+		denyAsk[spaceStarForm(item.rule)] = true
 	}
 
 	var entities []ir.Entity
@@ -93,5 +93,12 @@ func splitPermissionRule(rule string) (tool, argument string) {
 
 func coveredByDenyOrAsk(rule string, denyAsk map[string]bool) bool {
 	tool, _ := splitPermissionRule(rule)
-	return denyAsk[tool] || denyAsk[tool+"(*)"] || denyAsk[rule]
+	return denyAsk[tool] || denyAsk[tool+"(*)"] || denyAsk[spaceStarForm(rule)]
+}
+
+func spaceStarForm(rule string) string {
+	if prefix, ok := strings.CutSuffix(rule, ":*)"); ok {
+		return prefix + " *)"
+	}
+	return rule
 }
