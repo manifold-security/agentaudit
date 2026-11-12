@@ -1,0 +1,34 @@
+[
+  {
+    "id": "claude.permissions.allowed-shell",
+    "name": "Permission rule pre-approves a shell command",
+    "description": "A permissions.allow entry in this settings file lets Claude run matching Bash or PowerShell commands without asking, and a bare Bash or PowerShell entry matches every command.",
+    "category": ["code-execution"],
+    "appliesTo": ["claude-code"],
+    "target": "toolPermission",
+    "match": {
+      "condition": "and",
+      "rules": [
+        {"field": "tool", "op": "in", "value": ["Bash", "PowerShell"]}
+      ]
+    },
+    "message": "Shell command runs without a permission prompt",
+    "references": ["https://code.claude.com/docs/en/permissions"],
+    "examples": [
+      {"tool": "Bash"},
+      {"tool": "Bash", "argument": "npm run test:*"},
+      {"tool": "Bash", "argument": "git status"},
+      {"tool": "PowerShell"},
+      {"tool": "PowerShell", "argument": "Get-ChildItem *"}
+    ],
+    "negative_examples": [
+      {"tool": "WebFetch", "argument": "domain:example.com"},
+      {"tool": "Read", "argument": "./.env"},
+      {"tool": "mcp__github__create_issue"},
+      {"tool": "Bash(rm"},
+      {"tool": "PowerShell(ls"},
+      {"tool": "bash", "argument": "ls"},
+      {"tool": "powershell", "argument": "ls"}
+    ]
+  }
+]

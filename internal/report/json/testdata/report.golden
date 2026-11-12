@@ -451,11 +451,32 @@
           "file": ".cursor/worktrees.json",
           "key": "setup-worktree-unix[0]"
         }
+      },
+      {
+        "id": "8ee04d12f73402f1853b7d5dd3a75153",
+        "agent": "claude-code",
+        "ruleId": "previewserver.command",
+        "categories": [
+          "code-execution"
+        ],
+        "message": "",
+        "references": [],
+        "capability": {
+          "kind": "previewServer",
+          "what": "previewServer web (cwd=\"apps/web\"; env.NODE_ENV=\"development\")",
+          "value": "npm",
+          "args": [
+            "run",
+            "dev"
+          ],
+          "file": ".claude/launch.json",
+          "key": "configurations[0]"
+        }
       }
     ],
     "counts": {
-      "findings": 26,
-      "files": 14,
+      "findings": 27,
+      "files": 15,
       "categories": 10,
       "unreadableSources": 0,
       "unparsedSources": 0

@@ -12,6 +12,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
@@ -38,7 +39,10 @@ type settings struct {
 }
 
 type permissions struct {
-	DefaultMode *string `json:"defaultMode"`
+	DefaultMode *string         `json:"defaultMode"`
+	Allow       json.RawMessage `json:"allow"`
+	Deny        json.RawMessage `json:"deny"`
+	Ask         json.RawMessage `json:"ask"`
 }
 
 // hookGroup is one matcher block within hooks.<Event>. It carries json and
@@ -90,15 +94,20 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 		}
 
 		var s settings
-		if err := json.Unmarshal(data, &s); err != nil {
+		if err := jsonconf.Unmarshal(data, &s); err != nil {
 			warnings = append(warnings, adapter.Warning{File: file, Err: err})
 			continue
 		}
 
-		found, refused := limits.Of(fsys).Admit(file, entitiesFromSettings(s, file), nil)
+		parsed, malformed := entitiesFromSettings(s, file)
+		found, refused := limits.Of(fsys).Admit(file, parsed, malformed)
 		entities = append(entities, found...)
 		warnings = append(warnings, refused...)
 	}
+
+	previews, previewWarnings := previewServerEntities(fsys)
+	entities = append(entities, previews...)
+	warnings = append(warnings, previewWarnings...)
 
 	mcp, mcpWarnings, err := mcpEntities(fsys)
 	if err != nil {
@@ -142,7 +151,7 @@ func (Adapter) Parse(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	return entities, warnings, nil
 }
 
-func entitiesFromSettings(s settings, file string) []ir.Entity {
+func entitiesFromSettings(s settings, file string) ([]ir.Entity, []adapter.Warning) {
 	var entities []ir.Entity
 
 	entities = append(entities, hookEntities(s.Hooks, file)...)
@@ -170,14 +179,13 @@ func entitiesFromSettings(s settings, file string) []ir.Entity {
 		})
 	}
 
+	allowed, malformed := allowEntities(s.Permissions, file)
+	entities = append(entities, allowed...)
 	entities = append(entities, mcpApprovalEntities(s, file)...)
 
-	return entities
+	return entities, malformed
 }
 
-// mcpApprovalEntities emits ir.MCPApproval for the top-level MCP
-// auto-approval settings, carrying raw values: judging permissiveness is the
-// rule engine's job, not the adapter's.
 func mcpApprovalEntities(s settings, file string) []ir.Entity {
 	var entities []ir.Entity
 

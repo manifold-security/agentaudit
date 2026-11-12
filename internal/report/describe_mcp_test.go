@@ -183,7 +183,7 @@ func TestDescribe_MCPServerNameCannotForgeTheDisclosureClause(t *testing.T) {
 	}
 }
 
-// Declaring a vector on a server must leave both of Describe's returned
+// Declaring a vector on an MCP server must leave both of Describe's returned
 // strings untouched — Args is the channel that carries it instead.
 func TestDescribe_MCPServerArgsReachNeitherWhatNorValue(t *testing.T) {
 	bare := ir.MCPServer{Name: "fs", Transport: ir.TransportStdio, Command: "npx"}
@@ -279,9 +279,9 @@ func TestCommandLine_QuotesOnlyTheElementsThatNeedIt(t *testing.T) {
 	}
 }
 
-// Only a value that is an MCP or LSP server's own command is respelled; a
-// value naming a helper, a forwarded variable or a url is left to Describe,
-// and so is a server whose command is empty or a shell line such as a hook's.
+// Only a value that is a server's own command is respelled; a value naming a
+// helper, a forwarded variable or a url is left to Describe, and so is a
+// server whose command is empty or a shell line such as a hook's.
 func TestCommandLine_RespellsOnlyAValueThatIsTheServerCommand(t *testing.T) {
 	args := []string{"-y", "pkg"}
 	tests := []struct {
@@ -299,6 +299,8 @@ func TestCommandLine_RespellsOnlyAValueThatIsTheServerCommand(t *testing.T) {
 		{"http url", ir.MCPServer{Name: "s", Transport: ir.TransportHTTP, URL: "https://a", Command: "npx", Args: args}, "", false},
 		{"stdio with no command", ir.MCPServer{Name: "s", Transport: ir.TransportStdio, URL: "https://a", Args: args}, "", false},
 		{"lsp with no command", ir.LSPServer{Name: "go", Args: []string{"serve"}}, "", false},
+		{"preview command", ir.PreviewServer{Name: "web", Command: "npm", Args: []string{"run", "dev"}}, "npm run dev", true},
+		{"preview with no command", ir.PreviewServer{Name: "web", Args: []string{"run", "dev"}}, "", false},
 		{"a hook shell line", ir.Hook{Event: "SessionStart", Command: "notify.sh --all"}, "", false},
 		{"a status line shell line", ir.StatusLine{Command: "echo a b"}, "", false},
 	}

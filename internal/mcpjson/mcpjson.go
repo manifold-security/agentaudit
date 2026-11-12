@@ -11,6 +11,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 )
 
@@ -170,7 +171,7 @@ func ServersFromRaw(raw json.RawMessage, file, key string, budget *limits.Entiti
 	var warnings []adapter.Warning
 	for _, name := range names {
 		var entry Entry
-		if err := json.Unmarshal(rawEntries[name], &entry); err != nil {
+		if err := jsonconf.Unmarshal(rawEntries[name], &entry); err != nil {
 			warnings = append(warnings, adapter.Warning{File: file, Err: fmt.Errorf("%s.%s: %w", entryKeyPrefix, name, err)})
 			continue
 		}

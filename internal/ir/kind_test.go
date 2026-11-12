@@ -28,6 +28,7 @@ func TestKindTargetTokenContract(t *testing.T) {
 		{"ToolPermission", ToolPermission{Tool: "Shell", Argument: "*"}, "toolPermission", KindToolPermission},
 		{"InstructionText", InstructionText{Setting: "allow_instructions", Text: "prose"}, "instructionText", KindInstructionText},
 		{"LSPServer", LSPServer{Name: "n", Command: "c"}, "lspServer", KindLSPServer},
+		{"PreviewServer", PreviewServer{Name: "n", Command: "c"}, "previewServer", KindPreviewServer},
 	}
 
 	seen := make(map[string]string, len(tests))

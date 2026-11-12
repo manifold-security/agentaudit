@@ -33,7 +33,13 @@ func fifo(data []byte) *fstest.MapFile {
 const (
 	helperSettingsJSON = `{"apiKeyHelper":"/tmp/helper.sh"}`
 	oneServerJSON      = `{"mcpServers":{"x":{"command":"npx"}}}`
+	oneLaunchJSON      = `{"configurations":[{"name":"web","runtimeExecutable":"npm"}]}`
 )
+
+func previewServerSurface(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
+	entities, warnings := previewServerEntities(fsys)
+	return entities, warnings, nil
+}
 
 // bounded runs parse against fsys and fails as a deadline rather than hanging
 // the suite when a guard opens what it was meant to classify.
@@ -93,6 +99,12 @@ func TestGuardedSourcesRefuseAFIFOWithoutOpening(t *testing.T) {
 			name:  "settings.local.json",
 			file:  ".claude/settings.local.json",
 			fsys:  blockingWalkFS{m: fstest.MapFS{".claude/settings.local.json": fifo([]byte(helperSettingsJSON))}},
+			parse: parseAll,
+		},
+		{
+			name:  "launch.json",
+			file:  ".claude/launch.json",
+			fsys:  blockingWalkFS{m: fstest.MapFS{".claude/launch.json": fifo([]byte(oneLaunchJSON))}},
 			parse: parseAll,
 		},
 		{
@@ -213,6 +225,15 @@ func TestGuardedSourcesRefuseASymlinkToAFIFOWithoutOpening(t *testing.T) {
 			parse: parseAll,
 		},
 		{
+			name: "launch.json",
+			file: ".claude/launch.json",
+			fsys: blockingOpenFS{m: fstest.MapFS{
+				".claude/launch.json": symlink("../target"),
+				"target":              fifo([]byte(oneLaunchJSON)),
+			}},
+			parse: previewServerSurface,
+		},
+		{
 			name: "the project .mcp.json",
 			file: mcpFileName,
 			fsys: blockingOpenFS{m: fstest.MapFS{
@@ -249,6 +270,15 @@ func TestGuardedSourcesRefuseASymlinkToADirectory(t *testing.T) {
 		fsys  fs.FS
 		parse parseSurface
 	}{
+		{
+			name: "launch.json",
+			file: ".claude/launch.json",
+			fsys: fstest.MapFS{
+				".claude/launch.json": symlink("../target"),
+				"target/inner":        &fstest.MapFile{Data: []byte(oneLaunchJSON)},
+			},
+			parse: previewServerSurface,
+		},
 		{
 			name: "the project .mcp.json",
 			file: mcpFileName,
@@ -291,6 +321,8 @@ func TestGuardedSourcesReadAnInTreeSymlinkedConfig(t *testing.T) {
 		"real-settings.json":    &fstest.MapFile{Data: []byte(helperSettingsJSON)},
 		mcpFileName:             symlink("real-mcp.json"),
 		"real-mcp.json":         &fstest.MapFile{Data: []byte(oneServerJSON)},
+		".claude/launch.json":   symlink("../real-launch.json"),
+		"real-launch.json":      &fstest.MapFile{Data: []byte(oneLaunchJSON)},
 	}
 
 	entities, warnings, err := New().Parse(fsys)
@@ -301,17 +333,19 @@ func TestGuardedSourcesReadAnInTreeSymlinkedConfig(t *testing.T) {
 		t.Fatalf("Parse() warnings = %+v, want none", warnings)
 	}
 
-	var helper, server bool
+	var helper, server, preview bool
 	for _, e := range entities {
 		switch v := e.(type) {
 		case ir.CredentialHelper:
 			helper = v.Command == "/tmp/helper.sh"
 		case ir.MCPServer:
 			server = v.Name == "x"
+		case ir.PreviewServer:
+			preview = v.Name == "web"
 		}
 	}
-	if !helper || !server {
-		t.Fatalf("Parse() entities = %+v, want the symlinked settings helper and the symlinked .mcp.json server", entities)
+	if !helper || !server || !preview {
+		t.Fatalf("Parse() entities = %+v, want the symlinked settings helper, .mcp.json server and launch.json preview server", entities)
 	}
 }
 

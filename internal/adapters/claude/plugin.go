@@ -13,6 +13,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
@@ -110,7 +111,7 @@ func readPluginManifest(fsys fs.FS, root string) (pluginManifest, *adapter.Warni
 	}
 
 	var m pluginManifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := jsonconf.Unmarshal(data, &m); err != nil {
 		return pluginManifest{}, &adapter.Warning{File: manifestFile, Err: err}
 	}
 
@@ -427,7 +428,7 @@ func mcpServersFromDoc(doc pluginDoc, budget *limits.Entities) (map[string]mcpjs
 	}
 
 	var probe mcpServersWrapperProbe
-	if err := json.Unmarshal(doc.Data, &probe); err != nil {
+	if err := jsonconf.Unmarshal(doc.Data, &probe); err != nil {
 		return nil, []adapter.Warning{{File: doc.File, Err: err}}
 	}
 	if probe.MCPServers != nil {
@@ -509,6 +510,8 @@ func expandMCPMap(servers map[string]mcpjson.Entry, v dirVars) map[string]mcpjso
 	return out
 }
 
+const hooksWrapperKey = "hooks"
+
 type hooksWrapperProbe struct {
 	Hooks json.RawMessage `json:"hooks"`
 }
@@ -518,17 +521,17 @@ type hooksWrapperProbe struct {
 // inline shape; a top-level "hooks" key selects the wrapper.
 func hooksFromDoc(doc pluginDoc) (map[string][]hookGroup, []adapter.Warning) {
 	var probe hooksWrapperProbe
-	if err := json.Unmarshal(doc.Data, &probe); err != nil {
+	if err := jsonconf.Unmarshal(doc.Data, &probe); err != nil {
 		return nil, []adapter.Warning{{File: doc.File, Err: err}}
 	}
 
-	raw := doc.Data
+	raw, at := doc.Data, ""
 	if probe.Hooks != nil {
-		raw = probe.Hooks
+		raw, at = probe.Hooks, hooksWrapperKey
 	}
 
 	var hooks map[string][]hookGroup
-	if err := json.Unmarshal(raw, &hooks); err != nil {
+	if err := jsonconf.UnmarshalAt(raw, &hooks, at); err != nil {
 		return nil, []adapter.Warning{{File: doc.File, Err: err}}
 	}
 	return hooks, nil

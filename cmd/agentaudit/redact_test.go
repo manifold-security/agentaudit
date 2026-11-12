@@ -24,6 +24,7 @@ func credentialTargetFS() fstest.MapFS {
 			"args": {"command": "npx", "args": ["--token", "` + cliCanary + `"]}
 		}}`)},
 		".claude/settings.json": &fstest.MapFile{Data: []byte(`{
+			"permissions": {"allow": ["Bash(deploy --token=` + cliCanary + `)"]},
 			"env": {"HTTPS_PROXY": "http://me:` + cliCanary + `@proxy.example.test:3128"},
 			"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "FOO_TOKEN=` + cliCanary + ` ./run.sh"}]}]}
 		}`)},
@@ -38,7 +39,7 @@ var (
 // Neither stdout nor a report file carries a credential the scanned config
 // declared, and each still shows where the masked value points.
 func TestRun_PrintsNoCredentialOnStdoutOrInAReportFile(t *testing.T) {
-	visible := []string{"https://***@mcp.example.test/mcp?api_key=***", "http://***@proxy.example.test:3128", "FOO_TOKEN=*** ./run.sh"}
+	visible := []string{"https://***@mcp.example.test/mcp?api_key=***", "http://***@proxy.example.test:3128", "FOO_TOKEN=*** ./run.sh", "deploy --token=***"}
 
 	for _, tc := range []struct {
 		args    []string

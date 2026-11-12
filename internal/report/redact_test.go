@@ -351,7 +351,7 @@ func TestArgs_MasksCredentialArguments(t *testing.T) {
 	want := []string{"-y", "srv@1.0.0", "--token", "***", "--api-key=***", "-u", "admin:***", "--user", "admin:***", "--user=admin:***", "-uadmin:***", "--user", "root", "--Secret", "${***}", "--secret", "*** ***;***", "--config", `{"password": "***"}`, "--password", "--verbose", "--key", "./tls.key", "https://***@h.example.test"}
 	original := slices.Clone(in)
 
-	for _, e := range []ir.Entity{ir.MCPServer{Command: "curl", Args: in}, ir.LSPServer{Command: "curl", Args: in}} {
+	for _, e := range []ir.Entity{ir.MCPServer{Command: "curl", Args: in}, ir.LSPServer{Command: "curl", Args: in}, ir.PreviewServer{Command: "curl", Args: in}} {
 		if got := Args(e); !slices.Equal(got, want) {
 			t.Errorf("Args(%s) = %q, want %q", e.Kind(), got, want)
 		}

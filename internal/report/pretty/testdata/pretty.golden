@@ -13,6 +13,7 @@ code-execution:
   pluginExecutable tool.sh +x [audit-plugin] · bin/tool.sh · bin/tool.sh
   lspServer go · gopls serve · .lsp.json:go
   provisioner setup-worktree-unix · npm ci · .cursor/worktrees.json:setup-worktree-unix[0]
+  previewServer web (cwd="apps/web"; env.NODE_ENV="development") · npm run dev · .claude/launch.json:configurations[0]
 
 supply-chain:
   mcpServer fs (stdio) · "npx mcp-fs" -y mcp-fs@1.2.3 · .mcp.json:mcpServers.fs
@@ -47,4 +48,4 @@ filesystem-access:
 network-access:
   networkPolicy default · true · .codex/config.toml:sandbox_workspace_write.network_access
 
-26 capabilities · 14 files · 10 categories
+27 capabilities · 15 files · 10 categories

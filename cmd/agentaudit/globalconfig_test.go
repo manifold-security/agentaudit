@@ -181,6 +181,8 @@ var claudeGlobalReach = map[adapter.Signature][]string{
 		".claude/plugins/cache/p/.claude-plugin/plugin.json",
 		".claude/plugins/marketplaces/m/plugins/p/.claude-plugin/plugin.json",
 	},
+	// Claude Desktop has no user-level launch.json.
+	{Dir: ".claude", File: "launch.json", Recursive: false}: nil,
 }
 
 func TestGlobalConfig_ReachesEveryClaudeSignatureLoadPath(t *testing.T) {
@@ -657,6 +659,42 @@ func TestGlobalBlocks(t *testing.T) {
 		findings := blocks[0].Report.Findings()
 		if len(findings) != 1 || findings[0].Capability.Provenance.File != ".claude/settings.json" {
 			t.Fatalf("Findings() = %+v, want exactly the .claude/settings.json hook", findings)
+		}
+	})
+
+	t.Run("a launch.json beside the declared entries is never read", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		withOpenTarget(t, map[string]fs.FS{home: fstest.MapFS{
+			".claude/settings.json": &fstest.MapFile{Data: []byte(
+				`{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"notify.sh"}]}]}}`,
+			)},
+			".claude/launch.json": &fstest.MapFile{Data: []byte(`{"configurations":[{"name":"web","runtimeExecutable":"npm"}]}`)},
+		}})
+
+		blocks, _, err := globalBlocks([]adapter.Adapter{claude.New()}, noopWarn)
+		if err != nil {
+			t.Fatalf("globalBlocks() error = %v, want nil", err)
+		}
+		if len(blocks) != 1 {
+			t.Fatalf("globalBlocks() len = %d, want 1", len(blocks))
+		}
+		counts := blocks[0].Report.Counts()
+		if counts.UnreadableSources != 0 || counts.UnparsedSources != 0 {
+			t.Fatalf("Counts() = %+v, want no degraded source: the mask denies the file as absent", counts)
+		}
+		findings := blocks[0].Report.Findings()
+		if len(findings) != 1 || findings[0].Capability.Provenance.File != ".claude/settings.json" {
+			t.Fatalf("Findings() = %+v, want exactly the .claude/settings.json hook", findings)
+		}
+
+		unmasked := fstest.MapFS{".claude/launch.json": &fstest.MapFile{Data: []byte(`{"configurations":[{"name":"web","runtimeExecutable":"npm"}]}`)}}
+		entities, _, err := claude.New().Parse(unmasked)
+		if err != nil || len(entities) != 1 {
+			t.Fatalf("Parse() = (%+v, %v), want the preview server the mask withheld", entities, err)
+		}
+		if _, ok := entities[0].(ir.PreviewServer); !ok {
+			t.Fatalf("entity %T is not ir.PreviewServer", entities[0])
 		}
 	})
 

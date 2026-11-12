@@ -10,6 +10,7 @@ import (
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/fsguard"
 	"github.com/manifold-security/agentaudit/internal/ir"
+	"github.com/manifold-security/agentaudit/internal/jsonconf"
 	"github.com/manifold-security/agentaudit/internal/limits"
 	"github.com/manifold-security/agentaudit/internal/mcpjson"
 )
@@ -46,7 +47,7 @@ func (Adapter) ParseGlobal(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 	}
 
 	var doc claudeJSONFile
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := jsonconf.Unmarshal(data, &doc); err != nil {
 		return nil, []adapter.Warning{{File: claudeJSONFileName, Err: err}}, nil
 	}
 
@@ -78,7 +79,7 @@ func (Adapter) ParseGlobal(fsys fs.FS) ([]ir.Entity, []adapter.Warning, error) {
 
 func projectEntities(raw json.RawMessage, p string, budget *limits.Entities) ([]ir.Entity, []adapter.Warning) {
 	var proj claudeJSONProject
-	if err := json.Unmarshal(raw, &proj); err != nil {
+	if err := jsonconf.Unmarshal(raw, &proj); err != nil {
 		return nil, []adapter.Warning{{File: claudeJSONFileName, Err: fmt.Errorf("projects.%s: %w", p, err)}}
 	}
 

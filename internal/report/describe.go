@@ -2,6 +2,8 @@ package report
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -46,10 +48,7 @@ func describe(e ir.Entity) (what, value string) {
 		what = fmt.Sprintf("mcpServer %s (%s)", v.Name, label)
 		return what, mcpEndpoints(v)
 	case ir.EnvVar:
-		if v.Value != "" && credentialVar.MatchString(v.Name) {
-			return "envVar " + v.Name, mask
-		}
-		return "envVar " + v.Name, v.Value
+		return "envVar " + v.Name, envValue(v.Name, v.Value)
 	case ir.Subagent:
 		what = fmt.Sprintf("subagent %s (%s)", v.Name, v.PermissionMode)
 		if len(v.Tools) == 0 {
@@ -96,29 +95,71 @@ func describe(e ir.Entity) (what, value string) {
 		return "instructionText " + v.Setting, v.Text
 	case ir.LSPServer:
 		return "lspServer " + v.Name, v.Command
+	case ir.PreviewServer:
+		return previewServerLine(v), previewServerValue(v)
 	default:
 		return e.Kind(), "-"
 	}
 }
 
+func envValue(name, value string) string {
+	if value != "" && credentialVar.MatchString(name) {
+		return mask
+	}
+	return value
+}
+
+func previewServerLine(v ir.PreviewServer) string {
+	what := "previewServer"
+	if v.Name != "" {
+		what += " " + v.Name
+	}
+	var details []string
+	if v.Program != "" {
+		details = append(details, fmt.Sprintf("program=%q", v.Program))
+	}
+	if len(v.ProgramArgs) > 0 {
+		details = append(details, fmt.Sprintf("args=%q", redactArgs(v.Program, v.ProgramArgs)))
+	}
+	if v.Cwd != "" {
+		details = append(details, fmt.Sprintf("cwd=%q", v.Cwd))
+	}
+	for _, name := range slices.Sorted(maps.Keys(v.Env)) {
+		details = append(details, fmt.Sprintf("env.%s=%q", quoteArg(name), envValue(name, v.Env[name])))
+	}
+	if len(details) == 0 {
+		return what
+	}
+	return what + " (" + strings.Join(details, "; ") + ")"
+}
+
+func previewServerValue(v ir.PreviewServer) string {
+	if v.Command == "" && len(v.Args) > 0 {
+		return fmt.Sprintf("args=%q", redactArgs("", v.Args))
+	}
+	return v.Command
+}
+
 // Args returns the argument vector an entity declared, redacted, for a
-// reporter whose format delimits each element structurally. Describe's what
-// and value exclude it; CommandLine spells it for a single text column.
+// reporter whose format delimits each element structurally. CommandLine
+// spells it for a single text column.
 func Args(e ir.Entity) []string {
 	switch v := e.(type) {
 	case ir.MCPServer:
 		return redactArgs(v.Command, v.Args)
 	case ir.LSPServer:
 		return redactArgs(v.Command, v.Args)
+	case ir.PreviewServer:
+		return redactArgs(v.Command, v.Args)
 	default:
 		return nil
 	}
 }
 
-// CommandLine respells Describe's value when it is an MCP or LSP server's
-// own command, quoting the command and each argument that needs it. Escape
-// runs on the result, not on the elements first: quoting Escape's backslash
-// spelling of a control byte would merge it with that literal text.
+// CommandLine respells Describe's value when it is a server's own command,
+// quoting the command and each argument that needs it. Escape runs on the
+// result, not on the elements first: quoting Escape's backslash spelling of a
+// control byte would merge it with that literal text.
 func CommandLine(e ir.Entity) (string, bool) {
 	var command string
 	var args []string
@@ -129,6 +170,8 @@ func CommandLine(e ir.Entity) (string, bool) {
 		}
 		command, args = v.Command, v.Args
 	case ir.LSPServer:
+		command, args = v.Command, v.Args
+	case ir.PreviewServer:
 		command, args = v.Command, v.Args
 	}
 	if command == "" {

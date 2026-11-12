@@ -31,6 +31,7 @@ var knownTargetCases = []struct {
 	{ir.KindToolPermission, true},
 	{ir.KindInstructionText, true},
 	{ir.KindLSPServer, true},
+	{ir.KindPreviewServer, true},
 	{"not-a-real-kind", false},
 }
 

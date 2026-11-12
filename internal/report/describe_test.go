@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -346,6 +347,144 @@ func TestDescribe_LSPServer(t *testing.T) {
 	}
 	if want := "gopls"; value != want {
 		t.Errorf("Describe() value = %q, want %q", value, want)
+	}
+}
+
+func TestDescribe_PreviewServer(t *testing.T) {
+	tests := []struct {
+		name      string
+		entity    ir.PreviewServer
+		wantWhat  string
+		wantValue string
+	}{
+		{
+			name:      "command only",
+			entity:    ir.PreviewServer{Name: "web", Command: "npm", Args: []string{"run", "dev"}},
+			wantWhat:  "previewServer web",
+			wantValue: "npm",
+		},
+		{
+			name: "cwd and env",
+			entity: ir.PreviewServer{
+				Name: "web", Command: "npm", Cwd: "apps/web",
+				Env: map[string]string{"NODE_ENV": "development"},
+			},
+			wantWhat:  `previewServer web (cwd="apps/web"; env.NODE_ENV="development")`,
+			wantValue: "npm",
+		},
+		{
+			name: "no name",
+			entity: ir.PreviewServer{
+				Command: "node",
+				Env:     map[string]string{"API_TOKEN": "./c4n4ry"},
+			},
+			wantWhat:  `previewServer (env.API_TOKEN="***")`,
+			wantValue: "node",
+		},
+		{
+			name: "a path value under a name that is not a credential",
+			entity: ir.PreviewServer{
+				Name: "web", Command: "npm",
+				Env: map[string]string{"CONFIG_DIR": "./c4n4ry"},
+			},
+			wantWhat:  `previewServer web (env.CONFIG_DIR="./c4n4ry")`,
+			wantValue: "npm",
+		},
+		{
+			name: "a program declared beside the runtime executable",
+			entity: ir.PreviewServer{
+				Name: "web", Command: "npm",
+				Program: "server.js", ProgramArgs: []string{"--port", "4000"},
+			},
+			wantWhat:  `previewServer web (program="server.js"; args=["--port" "4000"])`,
+			wantValue: "npm",
+		},
+		{
+			name: "program arguments are redacted",
+			entity: ir.PreviewServer{
+				Name: "web", Command: "npm",
+				Program: "server.js", ProgramArgs: []string{"--token", "abc"},
+			},
+			wantWhat:  `previewServer web (program="server.js"; args=["--token" "***"])`,
+			wantValue: "npm",
+		},
+		{
+			name:      "arguments with no command",
+			entity:    ir.PreviewServer{Name: "web", Args: []string{"--inspect", "x y"}},
+			wantWhat:  "previewServer web",
+			wantValue: `args=["--inspect" "x y"]`,
+		},
+		{
+			name:      "credential arguments with no command",
+			entity:    ir.PreviewServer{Name: "web", Args: []string{"--token", "abc"}},
+			wantWhat:  "previewServer web",
+			wantValue: `args=["--token" "***"]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			what, value := Describe(tt.entity)
+			if what != tt.wantWhat {
+				t.Errorf("Describe() what = %q, want %q", what, tt.wantWhat)
+			}
+			if value != tt.wantValue {
+				t.Errorf("Describe() value = %q, want %q", value, tt.wantValue)
+			}
+		})
+	}
+}
+
+// Env keys render in sorted order, so a map's random iteration never
+// reorders the line between two scans of the same file.
+func TestDescribe_PreviewServerSortsItsEnv(t *testing.T) {
+	env := make(map[string]string)
+	var want []string
+	for i := range 12 {
+		key := fmt.Sprintf("K%02d", i)
+		env[key] = "v"
+		want = append(want, fmt.Sprintf("env.%s=%q", key, "v"))
+	}
+	what, _ := Describe(ir.PreviewServer{Name: "web", Command: "npm", Env: env})
+	if wantWhat := "previewServer web (" + strings.Join(want, "; ") + ")"; what != wantWhat {
+		t.Errorf("Describe() what = %q, want %q", what, wantWhat)
+	}
+}
+
+// A quoted cwd, env or program never reads as a second one of those fields.
+func TestDescribe_PreviewServerFieldsCannotForgeEachOther(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b ir.PreviewServer
+	}{
+		{
+			name: "cwd against cwd plus env",
+			a:    ir.PreviewServer{Command: "npm", Cwd: `a"; env.B="2`},
+			b:    ir.PreviewServer{Command: "npm", Cwd: "a", Env: map[string]string{"B": "2"}},
+		},
+		{
+			name: "env value against two env entries",
+			a:    ir.PreviewServer{Command: "npm", Env: map[string]string{"A": `1"; env.B="2`}},
+			b:    ir.PreviewServer{Command: "npm", Env: map[string]string{"A": "1", "B": "2"}},
+		},
+		{
+			name: "env key against two env entries",
+			a:    ir.PreviewServer{Command: "npm", Env: map[string]string{`A="1"; env.B`: "2"}},
+			b:    ir.PreviewServer{Command: "npm", Env: map[string]string{"A": "1", "B": "2"}},
+		},
+		{
+			name: "program against a cwd",
+			a:    ir.PreviewServer{Command: "npm", Program: `a"; cwd="b`},
+			b:    ir.PreviewServer{Command: "npm", Program: "a", Cwd: "b"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			whatA, _ := Describe(tt.a)
+			whatB, _ := Describe(tt.b)
+			if whatA == whatB {
+				t.Errorf("Describe() what = %q for both %+v and %+v", whatA, tt.a, tt.b)
+			}
+		})
 	}
 }
 

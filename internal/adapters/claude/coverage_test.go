@@ -53,6 +53,11 @@ var signatureProbes = []signatureProbe{
 		path: ".claude-plugin/plugin.json",
 		body: `{"name":"probe"}`,
 	},
+	{
+		sig:  adapter.Signature{Dir: ".claude", File: "launch.json", Recursive: false},
+		path: ".claude/launch.json",
+		body: `{"configurations":[{"runtimeExecutable":"probe"}]}`,
+	},
 }
 
 // Every declared signature is reached by Parse from its probe's own planted

@@ -25,6 +25,7 @@ var targets = map[string]func() ir.Entity{
 	ir.KindToolPermission:   func() ir.Entity { return ir.ToolPermission{} },
 	ir.KindInstructionText:  func() ir.Entity { return ir.InstructionText{} },
 	ir.KindLSPServer:        func() ir.Entity { return ir.LSPServer{} },
+	ir.KindPreviewServer:    func() ir.Entity { return ir.PreviewServer{} },
 }
 
 // newEntity returns a fresh ir.Entity for the registered target token and

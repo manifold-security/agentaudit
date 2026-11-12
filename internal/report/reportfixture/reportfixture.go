@@ -250,6 +250,18 @@ func Report() finding.Report {
 				Provenance: finding.Provenance{File: ".cursor/worktrees.json", Key: "setup-worktree-unix[0]"},
 			},
 		},
+		{
+			RuleID:     "previewserver.command",
+			Agent:      "claude-code",
+			Categories: []finding.Category{"code-execution"},
+			Capability: finding.Capability{
+				Entity: ir.PreviewServer{
+					Name: "web", Command: "npm", Args: []string{"run", "dev"},
+					Cwd: "apps/web", Env: map[string]string{"NODE_ENV": "development"},
+				},
+				Provenance: finding.Provenance{File: ".claude/launch.json", Key: "configurations[0]"},
+			},
+		},
 	}
 	return finding.NewReport(findings)
 }

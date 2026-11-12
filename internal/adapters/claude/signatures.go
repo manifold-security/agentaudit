@@ -23,6 +23,7 @@ func (Adapter) Signatures() []adapter.Signature {
 		{Dir: ".claude/skills", Recursive: true},
 		{Dir: ".claude/commands", Recursive: true},
 		{Dir: ".claude-plugin", File: "plugin.json", AnyDepth: true},
+		{Dir: ".claude", File: "launch.json", Recursive: false},
 	}
 }
 

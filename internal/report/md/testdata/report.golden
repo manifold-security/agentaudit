@@ -20,6 +20,7 @@
 | pluginexecutable.present | pluginExecutable tool.sh +x &#91;audit-plugin] | bin/tool.sh | bin/tool.sh |  |  | `2cf590dba79dad8235c9cd990fbb26b3` |
 | lspserver.command | lspServer go | gopls | .lsp.json:go |  |  | `ea962b8f669fd0ba6fba96edf7ce8ef4` |
 | provisioner.worktree | provisioner setup-worktree-unix | npm ci | .cursor/worktrees.json:setup-worktree-unix&#91;0] |  |  | `183838752d892e2ae275eb560a56078d` |
+| previewserver.command | previewServer web (cwd="apps/web"; env.NODE&#95;ENV="development") | npm | .claude/launch.json:configurations&#91;0] |  |  | `8ee04d12f73402f1853b7d5dd3a75153` |
 
 ## supply-chain
 
@@ -78,4 +79,4 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | networkpolicy.default | networkPolicy default | true | .codex/config.toml:sandbox&#95;workspace&#95;write.network&#95;access |  |  | `3b5f2ba99d697326b558460f74ddd785` |
 
-**26** capabilities · **14** files · **10** categories
+**27** capabilities · **15** files · **10** categories
