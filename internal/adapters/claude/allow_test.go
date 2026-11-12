@@ -4,23 +4,32 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"testing/fstest"
 
 	"github.com/manifold-security/agentaudit/adapter"
 	"github.com/manifold-security/agentaudit/internal/ir"
 )
 
-const settingsFile = ".claude/settings.json"
+const (
+	settingsFile      = ".claude/settings.json"
+	localSettingsFile = ".claude/settings.local.json"
+)
 
-func allowPermission(i int, tool, argument string) ir.Entity {
+func allowPermissionAt(file string, i int, tool, argument string) ir.Entity {
 	return ir.ToolPermission{
 		Tool:     tool,
 		Argument: argument,
-		Location: ir.Location{File: settingsFile, Key: fmt.Sprintf("permissions.allow[%d]", i)},
+		Location: ir.Location{File: file, Key: fmt.Sprintf("permissions.allow[%d]", i)},
 	}
 }
 
-// Every string allow entry becomes one permission, whatever tool it names, and
-// an entry the Tool(spec) shape does not fit stays whole in Tool.
+func allowPermission(i int, tool, argument string) ir.Entity {
+	return allowPermissionAt(settingsFile, i, tool, argument)
+}
+
+// With no deny or ask entry, every string allow entry becomes one permission,
+// whatever tool it names, and an entry the Tool(spec) shape does not fit stays
+// whole in Tool.
 func TestParse_AllowYieldsAToolPermissionPerEntry(t *testing.T) {
 	fsys := mapFS("settings.json", `{"permissions": {"allow": [
 		"Bash",
@@ -140,6 +149,154 @@ func TestParse_AllowThatIsNotAnArrayWarnsAlone(t *testing.T) {
 			}
 			if got := warningTexts(warnings); !reflect.DeepEqual(got, wantWarnings) {
 				t.Errorf("warnings = %q, want %q", got, wantWarnings)
+			}
+		})
+	}
+}
+
+func permissionsBody(allow, deny, ask string) string {
+	body := `{"permissions": {"allow": ` + allow
+	if deny != "" {
+		body += `, "deny": ` + deny
+	}
+	if ask != "" {
+		body += `, "ask": ` + ask
+	}
+	return body + `}}`
+}
+
+// Claude Code checks deny and ask before allow.
+func TestParse_AllowEntryADenyOrAskEntryCoversIsWithheld(t *testing.T) {
+	tests := []struct {
+		name  string
+		allow string
+		deny  string
+		ask   string
+		want  []ir.Entity
+	}{
+		{"deny of the bare tool", `["Bash(touch ./m)"]`, `["Bash"]`, ``, nil},
+		{"deny of the tool with a star", `["Bash(touch ./m)"]`, `["Bash(*)"]`, ``, nil},
+		{"ask of the bare tool", `["Bash(touch ./m)"]`, ``, `["Bash"]`, nil},
+		{"deny identical to the entry", `["Bash(touch ./m)"]`, `["Bash(touch ./m)"]`, ``, nil},
+		{"ask identical to the entry", `["Bash(touch ./m)"]`, ``, `["Bash(touch ./m)"]`, nil},
+		{"PowerShell entry beside a bare deny", `["PowerShell(Get-ChildItem *)"]`, `["PowerShell"]`, ``, nil},
+		{"PowerShell entry beside a deny of the tool with a star", `["PowerShell(Get-ChildItem *)"]`, `["PowerShell(*)"]`, ``, nil},
+		{"only the entry that an identical deny names", `["Bash(a)", "Bash(b)"]`, `["Bash(a)"]`, ``, []ir.Entity{allowPermission(1, "Bash", "b")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := mapFS("settings.json", permissionsBody(tt.allow, tt.deny, tt.ask))
+
+			entities, warnings, err := New().Parse(fsys)
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if !reflect.DeepEqual(entities, tt.want) {
+				t.Errorf("entities = %+v, want %+v", entities, tt.want)
+			}
+			if len(warnings) != 0 {
+				t.Errorf("warnings = %q, want none", warningTexts(warnings))
+			}
+		})
+	}
+}
+
+func TestParse_AllowEntryStaysBesideADenyOrAskEntryThatDoesNotMatchIt(t *testing.T) {
+	tests := []struct {
+		name  string
+		allow string
+		deny  string
+		ask   string
+		want  []ir.Entity
+	}{
+		{"deny of a different spelling of the prefix", `["Bash(curl:*)"]`, `["Bash(curl *)"]`, ``, []ir.Entity{allowPermission(0, "Bash", "curl:*")}},
+		{"ask of a narrower entry", `["Bash"]`, ``, `["Bash(rm:*)"]`, []ir.Entity{allowPermission(0, "Bash", "")}},
+		{"deny of another shell tool", `["Bash(make)"]`, `["PowerShell"]`, ``, []ir.Entity{allowPermission(0, "Bash", "make")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := mapFS("settings.json", permissionsBody(tt.allow, tt.deny, tt.ask))
+
+			entities, warnings, err := New().Parse(fsys)
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if !reflect.DeepEqual(entities, tt.want) {
+				t.Errorf("entities = %+v, want %+v", entities, tt.want)
+			}
+			if len(warnings) != 0 {
+				t.Errorf("warnings = %q, want none", warningTexts(warnings))
+			}
+		})
+	}
+}
+
+// A deny or ask list that cannot be read as rule strings warns, and the strings
+// beside a bad element still count.
+func TestParse_MalformedDenyOrAskListWarns(t *testing.T) {
+	tests := []struct {
+		name string
+		deny string
+		ask  string
+		want []ir.Entity
+		warn string
+	}{
+		{"deny that is a string", `"Bash"`, ``, []ir.Entity{allowPermission(0, "Bash", "make")}, "permissions.deny: expected an array of permission rules, found a string"},
+		{"ask with a number beside a string", ``, `["Bash", 7]`, nil, "permissions.ask[1]: expected a permission rule string, found a non-object value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := mapFS("settings.json", permissionsBody(`["Bash(make)"]`, tt.deny, tt.ask))
+
+			entities, warnings, err := New().Parse(fsys)
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if !reflect.DeepEqual(entities, tt.want) {
+				t.Errorf("entities = %+v, want %+v", entities, tt.want)
+			}
+			if got, want := warningTexts(warnings), []string{settingsFile + ": " + tt.warn}; !reflect.DeepEqual(got, want) {
+				t.Errorf("warnings = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestParse_DenyOrAskInOneSettingsFileWithholdsNothingInTheOther(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  []ir.Entity
+	}{
+		{"deny in the first file", map[string]string{
+			"settings.json":       `{"permissions": {"deny": ["Bash"]}}`,
+			"settings.local.json": `{"permissions": {"allow": ["Bash(make)"]}}`,
+		}, []ir.Entity{allowPermissionAt(localSettingsFile, 0, "Bash", "make")}},
+		{"deny in the second file", map[string]string{
+			"settings.json":       `{"permissions": {"allow": ["Bash(make)"]}}`,
+			"settings.local.json": `{"permissions": {"deny": ["Bash"]}}`,
+		}, []ir.Entity{allowPermissionAt(settingsFile, 0, "Bash", "make")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fsys := fstest.MapFS{}
+			for name, data := range tt.files {
+				fsys[".claude/"+name] = &fstest.MapFile{Data: []byte(data)}
+			}
+
+			entities, warnings, err := New().Parse(fsys)
+			if err != nil {
+				t.Fatalf("Parse() error = %v, want nil", err)
+			}
+			if !reflect.DeepEqual(entities, tt.want) {
+				t.Errorf("entities = %+v, want %+v", entities, tt.want)
+			}
+			if len(warnings) != 0 {
+				t.Errorf("warnings = %q, want none", warningTexts(warnings))
 			}
 		})
 	}

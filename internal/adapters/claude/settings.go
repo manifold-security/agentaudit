@@ -41,6 +41,8 @@ type settings struct {
 type permissions struct {
 	DefaultMode *string         `json:"defaultMode"`
 	Allow       json.RawMessage `json:"allow"`
+	Deny        json.RawMessage `json:"deny"`
+	Ask         json.RawMessage `json:"ask"`
 }
 
 // hookGroup is one matcher block within hooks.<Event>. It carries json and
@@ -184,9 +186,6 @@ func entitiesFromSettings(s settings, file string) ([]ir.Entity, []adapter.Warni
 	return entities, malformed
 }
 
-// mcpApprovalEntities emits ir.MCPApproval for the top-level MCP
-// auto-approval settings, carrying raw values: judging permissiveness is the
-// rule engine's job, not the adapter's.
 func mcpApprovalEntities(s settings, file string) []ir.Entity {
 	var entities []ir.Entity
 

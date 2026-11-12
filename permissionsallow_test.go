@@ -21,7 +21,7 @@ func allowedShellKeys(rep finding.Report) []string {
 	return out
 }
 
-func TestScanReportsEveryShellAllowEntryInBothSettingsFiles(t *testing.T) {
+func TestScanReportsShellAllowEntriesFromBothSettingsFiles(t *testing.T) {
 	tests := []struct {
 		name  string
 		files map[string]string
@@ -72,14 +72,17 @@ func TestScanReportsNothingForDenyAskOrAdditionalDirectories(t *testing.T) {
 	}{
 		{"deny, ask and directories", `{"permissions":{` + inert + `}}`, nil},
 		{"the same beside an allow entry", `{"permissions":{` + inert + `,"allow":["Bash(make)"]}}`, []string{settingsFile + ":permissions.allow[0]"}},
-		{"an allow entry that an identical deny names", `{"permissions":{"allow":["Bash(make)"],"deny":["Bash(make)"]}}`, []string{settingsFile + ":permissions.allow[0]"}},
+		{"an allow entry beside a deny of the bare tool", `{"permissions":{"allow":["Bash(curl:*)"],"deny":["Bash"]}}`, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rep, _ := warnedScan(t, projectScan, treeOf(map[string]string{settingsFile: tt.body}))
+			rep, warnings := warnedScan(t, projectScan, treeOf(map[string]string{settingsFile: tt.body}))
 
 			if got := allowedShellKeys(rep); !slices.Equal(got, tt.want) {
 				t.Errorf("%s findings = %q, want %q", allowedShellRule, got, tt.want)
+			}
+			if len(warnings) != 0 || rep.UnparsedSources() != 0 {
+				t.Errorf("warnings = %q, unparsed = %d, want a clean scan", warnings, rep.UnparsedSources())
 			}
 			if got := rep.ScannedAgents(); !slices.Equal(got, []string{"claude-code"}) {
 				t.Errorf("ScannedAgents() = %q, want [claude-code]", got)
